@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Biblioteca — Arquitectura N-Capas</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+
+  <header>
+    <h1>📚 Biblioteca</h1>
+    <p class="subtitle">Ejemplo de arquitectura web en N-Capas · Presentación → Negocio → Acceso a Datos → Base de Datos</p>
+  </header>
+
+  <main>
+    <div id="mensaje" class="mensaje" hidden></div>
+
+    <section class="tarjeta">
+      <h2>Agregar un libro</h2>
+      <form id="form-libro" autocomplete="off">
+        <input type="text" id="titulo" placeholder="Título" required>
+        <input type="text" id="autor" placeholder="Autor" required>
+        <input type="number" id="anio" placeholder="Año" required>
+        <button type="submit">Agregar</button>
+      </form>
+    </section>
+
+    <section class="tarjeta">
+      <h2>Catálogo de libros</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Título</th>
+            <th>Autor</th>
+            <th>Año</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-libros"></tbody>
+      </table>
+    </section>
+
+    <section class="tarjeta">
+      <h2>Préstamos</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Libro</th>
+            <th>Prestado a</th>
+            <th>Fecha préstamo</th>
+            <th>Fecha devolución</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-prestamos"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
