@@ -3,6 +3,7 @@
 from datetime import date
 from typing import List, Optional
 
+from business import activity_service
 from business.exceptions import BusinessError, NotFoundError
 from data_access.book_repository import BookRepository
 from data_access.loan_repository import LoanRepository
@@ -62,7 +63,9 @@ class BookService:
             year=year_value,
             available=True,
         )
-        return self._books.create(book)
+        created = self._books.create(book)
+        activity_service.record("libros_registrados")  # STATEFUL
+        return created
 
     def update_book(
         self, book_id: int, title: str, author: str, year: Optional[int]
@@ -92,3 +95,5 @@ class BookService:
         # para no dejar filas huérfanas en `loans`.
         self._loans.delete_by_book(book.id)
         self._books.delete(book.id)
+
+        activity_service.record("libros_eliminados")  # STATEFUL

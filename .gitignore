@@ -1,5 +1,65 @@
-__pycache__/
-*.pyc
+# ---- Base de datos de la aplicación --------------------------------------
+# Se regenera sola al arrancar, con los libros de ejemplo.
+library.db
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# ---- Entornos virtuales ---------------------------------------------------
 .venv/
 venv/
-library.db
+env/
+ENV/
+
+# ---- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ---- Pruebas y cobertura --------------------------------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# ---- Flask ----------------------------------------------------------------
+instance/
+.webassets-cache
+flask_session/
+
+# ---- Variables de entorno (¡nunca subir la SECRET_KEY!) -------------------
+.env
+.env.*
+!.env.example
+
+# ---- Editores e IDEs ------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---- macOS ----------------------------------------------------------------
+.DS_Store
+.AppleDouble
+._*
+.Spotlight-V100
+.Trashes
+
+# ---- Windows / Linux ------------------------------------------------------
+Thumbs.db
+Desktop.ini
+.directory
+
+# ---- Registros ------------------------------------------------------------
+*.log

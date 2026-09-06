@@ -10,7 +10,7 @@
 
   <header>
     <h1>📚 Biblioteca</h1>
-    <p class="subtitle">Ejemplo de arquitectura web en N-Capas · Presentación → Negocio → Acceso a Datos → Base de Datos</p>
+    <p class="subtitle">Arquitectura web en N-Capas · Presentación → Negocio → Acceso a Datos → Base de Datos</p>
   </header>
 
   <main>
@@ -51,13 +51,60 @@
             <th>#</th>
             <th>Libro</th>
             <th>Prestado a</th>
-            <th>Fecha préstamo</th>
-            <th>Fecha devolución</th>
+            <th>Préstamo</th>
+            <th>Vence</th>
+            <th>Devolución</th>
             <th>Acciones</th>
           </tr>
         </thead>
         <tbody id="tabla-prestamos"></tbody>
       </table>
+    </section>
+
+    <!-- ================= FUNCIONES STATELESS ================= -->
+    <section class="tarjeta destacada stateless">
+      <h2>🧮 Funciones sin estado (stateless)</h2>
+      <p class="nota">
+        Cálculos puros: no tocan la base de datos ni la sesión. Todo lo que
+        necesitan viene en la petición, así que la misma entrada devuelve
+        siempre la misma salida y no dejan rastro en el servidor.
+      </p>
+
+      <form id="form-calculo" autocomplete="off">
+        <label>Fecha de préstamo <input type="date" id="calc-fecha" required></label>
+        <label>Plazo (días) <input type="number" id="calc-dias" value="15" min="1" required></label>
+        <label>Devuelto el <input type="date" id="calc-devolucion"></label>
+        <button type="submit">Calcular</button>
+      </form>
+
+      <div id="resultado-calculo" class="resultado" hidden></div>
+    </section>
+
+    <!-- ================= FUNCIONES STATEFUL ================= -->
+    <section class="tarjeta destacada stateful">
+      <h2>🧠 Funciones con estado (stateful)</h2>
+
+      <div class="columnas">
+        <div>
+          <h3>Actividad del servidor <small>memoria compartida</small></h3>
+          <p class="nota">
+            Contadores guardados en la RAM del proceso. Los ve igual cualquiera
+            que abra la aplicación y se pierden al reiniciar el servidor.
+          </p>
+          <div id="actividad"></div>
+          <button class="peligro" id="btn-reset-actividad">Reiniciar contadores</button>
+        </div>
+
+        <div>
+          <h3>Mi lista de deseos <small>sesión, solo tuya</small></h3>
+          <p class="nota">
+            Vive en tu sesión (una cookie firmada). Se conserva entre peticiones,
+            pero otro navegador vería una lista distinta. Pulsa ☆ en el catálogo.
+          </p>
+          <div id="lista-deseos"></div>
+          <button class="peligro" id="btn-vaciar-deseos">Vaciar lista</button>
+        </div>
+      </div>
     </section>
   </main>
 

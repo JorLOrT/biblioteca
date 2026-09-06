@@ -113,12 +113,69 @@ La primera vez se crea `library.db` con **6 libros de ejemplo**.
 | `GET` | `/api/loans` | Lista los préstamos (activos e historial) |
 | `POST` | `/api/loans` | Presta un libro — `{book_id, borrower}` |
 | `POST` | `/api/loans/<id>/return` | Registra la devolución |
+| `GET` | `/api/tools/due-date` | *Stateless* — calcula el vencimiento de un préstamo |
+| `GET` | `/api/tools/fine` | *Stateless* — calcula los días de retraso y la multa |
+| `GET` | `/api/activity` | *Stateful* — contadores en la memoria del servidor |
+| `POST` | `/api/activity/reset` | *Stateful* — pone los contadores a cero |
+| `GET` | `/api/wishlist` | *Stateful* — la lista de deseos de tu sesión |
+| `POST` | `/api/wishlist/<id>` | *Stateful* — añade o quita un libro de tu lista |
+| `DELETE` | `/api/wishlist` | *Stateful* — vacía tu lista |
 
 Códigos de respuesta: `200`/`201` correcto · `400` regla de negocio incumplida · `404` no existe.
 
 ---
 
-## 5. Estructura de archivos
+## 5. Funciones stateful y stateless
+
+La aplicación incluye dos funciones de cada tipo, para ver el contraste.
+
+### Sin estado (*stateless*) — `business/library_calculator.py`
+
+Funciones **puras**: el resultado depende únicamente de los argumentos. No leen ni escriben la base
+de datos, no miran la sesión, no consultan el reloj y no recuerdan nada entre llamadas.
+
+| Función | Qué hace |
+|---|---|
+| `calculate_due_date(loan_date, days)` | Fecha límite para devolver un libro |
+| `calculate_fine(due_date, reference_date)` | Días de retraso y multa acumulada |
+
+Se usan de verdad en `LoanService.list_loans()`, que calcula el vencimiento y la multa de cada
+préstamo antes de devolverlos. La prueba de que no tienen estado es que la misma petición siempre
+responde lo mismo:
+
+```bash
+curl "localhost:5001/api/tools/due-date?loan_date=2026-03-01&days=15"
+# -> {"due_date": "2026-03-16", ...}   por muchas veces que la repitas
+
+curl "localhost:5001/api/tools/fine?due_date=2026-03-16&reference_date=2026-03-20"
+# -> {"days_late": 4, "fine": 2.0}
+```
+
+### Con estado (*stateful*)
+
+Aquí el resultado depende de lo que ocurrió antes, no solo de los argumentos.
+
+**1. `activity_service.record(action)` — memoria del servidor, compartida.**
+Los contadores viven en una variable de módulo protegida con un `Lock`. Los ve igual cualquiera que
+abra la aplicación y se pierden al reiniciar el proceso, porque no están en la base de datos.
+
+```bash
+curl localhost:5001/api/activity
+# -> {"counters": {"prestamos": 2, "devoluciones": 1}, "total": 3, ...}
+```
+
+**2. `WishlistService.toggle(wishlist, book_id)` — sesión, propia de cada usuario.**
+La lista de deseos se guarda en una cookie de sesión firmada, así que cada navegador tiene la suya y
+se conserva entre peticiones. La misma llamada añade la primera vez y quita la segunda:
+
+```bash
+curl -c cookies -b cookies -X POST localhost:5001/api/wishlist/4   # -> {"book_ids": [4],  "in_wishlist": true}
+curl -c cookies -b cookies -X POST localhost:5001/api/wishlist/4   # -> {"book_ids": [],   "in_wishlist": false}
+```
+
+---
+
+## 6. Estructura de archivos
 
 ```
 App-N-Capas/
@@ -139,12 +196,18 @@ App-N-Capas/
 ├── business/                   # CAPA DE NEGOCIO
 │   ├── exceptions.py           #   BusinessError, NotFoundError
 │   ├── book_service.py         #   Reglas del catálogo
-│   └── loan_service.py         #   Reglas de préstamo y devolución
+│   ├── loan_service.py         #   Reglas de préstamo y devolución
+│   ├── library_calculator.py   #   STATELESS: cálculos puros
+│   ├── activity_service.py     #   STATEFUL: contadores en memoria
+│   └── wishlist_service.py     #   STATEFUL: lista de deseos (sesión)
 │
 └── presentation/               # CAPA DE PRESENTACIÓN
     ├── home_controller.py      #   Sirve la página
     ├── book_controller.py      #   /api/books
     ├── loan_controller.py      #   /api/loans
+    ├── tools_controller.py     #   /api/tools    (stateless)
+    ├── activity_controller.py  #   /api/activity (stateful)
+    ├── wishlist_controller.py  #   /api/wishlist (stateful, sesión)
     ├── error_handlers.py       #   Errores de negocio -> códigos HTTP
     ├── templates/index.html
     └── static/{app.js, styles.css}

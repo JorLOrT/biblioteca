@@ -1,6 +1,17 @@
+# Entornos virtuales del host (son de macOS, no sirven dentro del contenedor)
 .venv/
 venv/
-__pycache__/
-*.pyc
-library.db
+
+# Caché de Python — el ** hace que aplique también a subcarpetas
+**/__pycache__
+**/*.py[cod]
+
+# La base de datos se genera dentro del contenedor al arrancar
+*.db
+*.sqlite3
+
+# Metadatos y documentación que la imagen no necesita
 .git/
+.gitignore
+README.md
+*.log
