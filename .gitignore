@@ -1,3 +1,13 @@
+# ---- Material de entrega, no forma parte de la aplicación -----------------
+# Documentos del trabajo y las capturas e scripts que solo sirven para armarlos.
+# La aplicación funciona sin nada de esto.
+*.docx
+*.pdf
+*.pptx
+*.odt
+docs/
+capturas/
+
 # ---- Base de datos de la aplicación --------------------------------------
 # Se regenera sola al arrancar, con los libros de ejemplo.
 library.db
