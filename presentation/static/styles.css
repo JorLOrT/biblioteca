@@ -28,6 +28,37 @@ header {
 
 header h1 { margin: 0; font-size: 1.6rem; }
 
+.cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.idioma {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: #a8b3bf;
+}
+
+.idioma select {
+  padding: .4rem .6rem;
+  border-radius: 6px;
+  border: 1px solid #3d4852;
+  background: #2b3540;
+  color: #fff;
+  font-size: .85rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 .subtitle {
   margin: .35rem 0 0;
   color: #a8b3bf;
@@ -60,6 +91,8 @@ form {
   display: flex;
   flex-wrap: wrap;
   gap: .5rem;
+  /* Sin esto, los campos y el botón se estiran a lo alto de la fila. */
+  align-items: flex-end;
 }
 
 input {
@@ -170,14 +203,22 @@ td.acciones { white-space: nowrap; }
   gap: 1.5rem;
 }
 
-form label {
+form:not(.validado) label {
   display: flex;
   flex-direction: column;
   gap: .25rem;
+  flex: 1 1 160px;
   font-size: .75rem;
   color: var(--suave);
   text-transform: uppercase;
   letter-spacing: .03em;
+}
+
+/* Dentro de un label en columna, el eje principal es la altura: sin esto el
+   `flex: 1 1 160px` de los inputs los estiraría hasta 160px de alto. */
+form:not(.validado) label input {
+  flex: none;
+  width: 100%;
 }
 
 .resultado {
@@ -238,3 +279,103 @@ button.estrella {
 button.estrella.activa { color: #e0a52e; }
 
 tr.atrasado td { background: #fffaf3; }
+
+/* --- Formularios validados con expresiones regulares --------------------- */
+
+form.validado {
+  align-items: flex-start;
+  gap: .75rem;
+}
+
+form.vertical { flex-direction: column; }
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.campo.estrecho { flex: 0 1 110px; }
+form.vertical .campo { width: 100%; flex: none; }
+
+.campo label {
+  flex: none;
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--suave);
+}
+
+.campo input { flex: none; width: 100%; }
+
+.campo .pista,
+.campo .fallo {
+  font-size: .72rem;
+  line-height: 1.35;
+}
+
+.campo .pista { color: #98a3ae; }
+.campo .fallo { color: var(--rojo); font-weight: 600; }
+
+/* Un campo con error se marca en rojo; uno correcto, en verde. */
+input.invalido {
+  border-color: var(--rojo);
+  background: #fdf6f5;
+}
+
+input.invalido:focus { outline-color: var(--rojo); }
+
+input.valido { border-color: #8fcfae; }
+
+/* El botón de un formulario validado se alinea con los campos, no con las pistas. */
+form.validado > button[type="submit"] { margin-top: 1.15rem; }
+form.vertical > button[type="submit"] { margin-top: 0; }
+
+td.isbn {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .82rem;
+  color: var(--suave);
+}
+
+/* --- Cuadro de diálogo del préstamo -------------------------------------- */
+
+.capa {
+  position: fixed;
+  inset: 0;
+  background: rgba(31, 41, 51, .55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 50;
+}
+
+.capa[hidden] { display: none; }
+
+.dialogo {
+  background: var(--tarjeta);
+  border-radius: 10px;
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 440px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .28);
+}
+
+.dialogo h2 {
+  margin: 0 0 .5rem;
+  font-size: 1.05rem;
+  color: var(--suave);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.botonera {
+  display: flex;
+  justify-content: flex-end;
+  gap: .5rem;
+  width: 100%;
+}

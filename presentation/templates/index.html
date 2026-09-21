@@ -1,42 +1,71 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="{{ lang }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Biblioteca — Arquitectura N-Capas</title>
+  <title>{{ t('app.title') }} — N-Capas</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
 
   <header>
-    <h1>📚 Biblioteca</h1>
-    <p class="subtitle">Arquitectura web en N-Capas · Presentación → Negocio → Acceso a Datos → Base de Datos</p>
+    <div class="cabecera">
+      <div>
+        <h1>📚 {{ t('app.title') }}</h1>
+        <p class="subtitle">{{ t('app.subtitle') }}</p>
+      </div>
+      <div class="idioma">
+        <label for="selector-idioma">{{ t('lang.label') }}</label>
+        <select id="selector-idioma">
+          <option value="es" {% if lang == 'es' %}selected{% endif %}>Español</option>
+          <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
+        </select>
+      </div>
+    </div>
   </header>
 
   <main>
     <div id="mensaje" class="mensaje" hidden></div>
 
     <section class="tarjeta">
-      <h2>Agregar un libro</h2>
-      <form id="form-libro" autocomplete="off">
-        <input type="text" id="titulo" placeholder="Título" required>
-        <input type="text" id="autor" placeholder="Autor" required>
-        <input type="number" id="anio" placeholder="Año" required>
-        <button type="submit">Agregar</button>
+      <h2>{{ t('form.add_book') }}</h2>
+      <form id="form-libro" class="validado" autocomplete="off" novalidate>
+        <div class="campo">
+          <input type="text" id="titulo" data-regla="title" placeholder="{{ t('form.title') }}">
+          <small class="pista">{{ t('hint.title') }}</small>
+          <small class="fallo" hidden></small>
+        </div>
+        <div class="campo">
+          <input type="text" id="autor" data-regla="author" placeholder="{{ t('form.author') }}">
+          <small class="pista">{{ t('hint.author') }}</small>
+          <small class="fallo" hidden></small>
+        </div>
+        <div class="campo estrecho">
+          <input type="text" id="anio" data-regla="year" inputmode="numeric" placeholder="{{ t('form.year') }}">
+          <small class="pista">{{ t('hint.year') }}</small>
+          <small class="fallo" hidden></small>
+        </div>
+        <div class="campo">
+          <input type="text" id="isbn" data-regla="isbn" placeholder="{{ t('form.isbn') }}">
+          <small class="pista">{{ t('hint.isbn') }}</small>
+          <small class="fallo" hidden></small>
+        </div>
+        <button type="submit">{{ t('form.add') }}</button>
       </form>
     </section>
 
     <section class="tarjeta">
-      <h2>Catálogo de libros</h2>
+      <h2>{{ t('catalog.heading') }}</h2>
       <table>
         <thead>
           <tr>
-            <th>#</th>
-            <th>Título</th>
-            <th>Autor</th>
-            <th>Año</th>
-            <th>Estado</th>
-            <th>Acciones</th>
+            <th>{{ t('table.id') }}</th>
+            <th>{{ t('table.title') }}</th>
+            <th>{{ t('table.author') }}</th>
+            <th>{{ t('table.year') }}</th>
+            <th>{{ t('table.isbn') }}</th>
+            <th>{{ t('table.status') }}</th>
+            <th>{{ t('table.actions') }}</th>
           </tr>
         </thead>
         <tbody id="tabla-libros"></tbody>
@@ -44,17 +73,17 @@
     </section>
 
     <section class="tarjeta">
-      <h2>Préstamos</h2>
+      <h2>{{ t('loans.heading') }}</h2>
       <table>
         <thead>
           <tr>
-            <th>#</th>
-            <th>Libro</th>
-            <th>Prestado a</th>
-            <th>Préstamo</th>
-            <th>Vence</th>
-            <th>Devolución</th>
-            <th>Acciones</th>
+            <th>{{ t('table.id') }}</th>
+            <th>{{ t('table.book') }}</th>
+            <th>{{ t('table.borrower') }}</th>
+            <th>{{ t('table.loan_date') }}</th>
+            <th>{{ t('table.due_date') }}</th>
+            <th>{{ t('table.return_date') }}</th>
+            <th>{{ t('table.actions') }}</th>
           </tr>
         </thead>
         <tbody id="tabla-prestamos"></tbody>
@@ -63,18 +92,14 @@
 
     <!-- ================= FUNCIONES STATELESS ================= -->
     <section class="tarjeta destacada stateless">
-      <h2>🧮 Funciones sin estado (stateless)</h2>
-      <p class="nota">
-        Cálculos puros: no tocan la base de datos ni la sesión. Todo lo que
-        necesitan viene en la petición, así que la misma entrada devuelve
-        siempre la misma salida y no dejan rastro en el servidor.
-      </p>
+      <h2>🧮 {{ t('stateless.heading') }}</h2>
+      <p class="nota">{{ t('stateless.note') }}</p>
 
       <form id="form-calculo" autocomplete="off">
-        <label>Fecha de préstamo <input type="date" id="calc-fecha" required></label>
-        <label>Plazo (días) <input type="number" id="calc-dias" value="15" min="1" required></label>
-        <label>Devuelto el <input type="date" id="calc-devolucion"></label>
-        <button type="submit">Calcular</button>
+        <label>{{ t('calc.loan_date') }} <input type="date" id="calc-fecha" required></label>
+        <label>{{ t('calc.days') }} <input type="number" id="calc-dias" value="15" min="1" required></label>
+        <label>{{ t('calc.returned_on') }} <input type="date" id="calc-devolucion"></label>
+        <button type="submit">{{ t('calc.submit') }}</button>
       </form>
 
       <div id="resultado-calculo" class="resultado" hidden></div>
@@ -82,31 +107,67 @@
 
     <!-- ================= FUNCIONES STATEFUL ================= -->
     <section class="tarjeta destacada stateful">
-      <h2>🧠 Funciones con estado (stateful)</h2>
+      <h2>🧠 {{ t('stateful.heading') }}</h2>
 
       <div class="columnas">
         <div>
-          <h3>Actividad del servidor <small>memoria compartida</small></h3>
-          <p class="nota">
-            Contadores guardados en la RAM del proceso. Los ve igual cualquiera
-            que abra la aplicación y se pierden al reiniciar el servidor.
-          </p>
+          <h3>{{ t('activity.heading') }} <small>{{ t('activity.subtitle') }}</small></h3>
+          <p class="nota">{{ t('activity.note') }}</p>
           <div id="actividad"></div>
-          <button class="peligro" id="btn-reset-actividad">Reiniciar contadores</button>
+          <button class="peligro" id="btn-reset-actividad">{{ t('activity.reset') }}</button>
         </div>
 
         <div>
-          <h3>Mi lista de deseos <small>sesión, solo tuya</small></h3>
-          <p class="nota">
-            Vive en tu sesión (una cookie firmada). Se conserva entre peticiones,
-            pero otro navegador vería una lista distinta. Pulsa ☆ en el catálogo.
-          </p>
+          <h3>{{ t('wishlist.heading') }} <small>{{ t('wishlist.subtitle') }}</small></h3>
+          <p class="nota">{{ t('wishlist.note') }}</p>
           <div id="lista-deseos"></div>
-          <button class="peligro" id="btn-vaciar-deseos">Vaciar lista</button>
+          <button class="peligro" id="btn-vaciar-deseos">{{ t('wishlist.clear') }}</button>
         </div>
       </div>
     </section>
   </main>
+
+  <!-- ====== FORMULARIO DE PRÉSTAMO VALIDADO CON REGEX ====== -->
+  <div id="capa-prestamo" class="capa" hidden>
+    <div class="dialogo">
+      <h2>{{ t('loanform.heading') }}</h2>
+      <p class="nota" id="prestamo-libro"></p>
+
+      <form id="form-prestamo" class="validado vertical" autocomplete="off" novalidate>
+        <div class="campo">
+          <label for="p-nombre">{{ t('loanform.borrower') }}</label>
+          <input type="text" id="p-nombre" data-regla="borrower">
+          <small class="pista">{{ t('hint.borrower') }}</small>
+          <small class="fallo" hidden></small>
+        </div>
+        <div class="campo">
+          <label for="p-dni">{{ t('loanform.dni') }}</label>
+          <input type="text" id="p-dni" data-regla="dni" inputmode="numeric" maxlength="8">
+          <small class="pista">{{ t('hint.dni') }}</small>
+          <small class="fallo" hidden></small>
+        </div>
+        <div class="campo">
+          <label for="p-email">{{ t('loanform.email') }}</label>
+          <input type="text" id="p-email" data-regla="email">
+          <small class="pista">{{ t('hint.email') }}</small>
+          <small class="fallo" hidden></small>
+        </div>
+        <div class="campo">
+          <label for="p-telefono">{{ t('loanform.phone') }}</label>
+          <input type="text" id="p-telefono" data-regla="phone" inputmode="numeric" maxlength="9">
+          <small class="pista">{{ t('hint.phone') }}</small>
+          <small class="fallo" hidden></small>
+        </div>
+
+        <p class="nota">{{ t('loanform.note') }}</p>
+
+        <div class="botonera">
+          <button type="button" class="peligro" id="btn-cancelar-prestamo">{{ t('loanform.cancel') }}</button>
+          <button type="submit">{{ t('loanform.submit') }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

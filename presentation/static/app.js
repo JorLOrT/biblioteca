@@ -8,7 +8,18 @@ const panelActividad = document.getElementById("actividad");
 const panelDeseos = document.getElementById("lista-deseos");
 const resultadoCalculo = document.getElementById("resultado-calculo");
 
-let deseos = []; // copia local de la lista de deseos que guarda la sesión
+let deseos = [];    // copia local de la lista de deseos que guarda la sesión
+let mensajes = {};  // catálogo de traducciones que entrega /api/i18n
+let reglas = {};    // expresiones regulares que entrega /api/validation-rules
+
+/** Traduce una clave sustituyendo sus parámetros: t("wishlist.count", {count: 2, max: 5}) */
+function t(clave, params = {}) {
+  let texto = mensajes[clave] ?? clave;
+  for (const [nombre, valor] of Object.entries(params)) {
+    texto = texto.split(`{${nombre}}`).join(valor);
+  }
+  return texto;
+}
 
 function mostrarMensaje(texto, tipo) {
   mensaje.textContent = texto;
@@ -25,7 +36,7 @@ async function api(url, opciones) {
   const respuesta = await fetch(url, opciones);
   const datos = await respuesta.json();
   if (!respuesta.ok) {
-    throw new Error(datos.error || "Ocurrió un error inesperado.");
+    throw new Error(datos.error || t("error.unexpected"));
   }
   return datos;
 }
@@ -36,13 +47,87 @@ function escapar(texto) {
   return div.innerHTML;
 }
 
-const soles = (valor) => "S/ " + Number(valor).toFixed(2);
+// ===========================================================================
+//  VALIDACIÓN DEL FORMULARIO CON EXPRESIONES REGULARES
+//  Los patrones NO se escriben aquí: se piden a /api/validation-rules, que los
+//  toma de business/validators.py. Así el navegador y el servidor aplican
+//  exactamente la misma regla y no pueden quedar desincronizados.
+// ===========================================================================
+
+/** ¿Encaja el valor de este campo con su expresión regular? */
+function campoValido(input) {
+  const patron = reglas[input.dataset.regla];
+  if (!patron) return true;
+  return new RegExp(patron).test(input.value.trim());
+}
+
+/** Pinta el campo y muestra u oculta su mensaje de error. */
+function revisarCampo(input, mostrarError = true) {
+  const contenedor = input.closest(".campo");
+  const fallo = contenedor.querySelector(".fallo");
+  const valido = campoValido(input);
+
+  input.classList.toggle("invalido", mostrarError && !valido);
+  input.classList.toggle("valido", valido && input.value.trim() !== "");
+
+  if (mostrarError && !valido && input.value.trim() !== "") {
+    fallo.textContent = t("error.invalid_" + input.dataset.regla);
+    fallo.hidden = false;
+  } else {
+    fallo.hidden = true;
+  }
+  return valido;
+}
+
+/** Valida el formulario entero. Devuelve true solo si todos los campos pasan. */
+function formularioValido(form) {
+  const campos = [...form.querySelectorAll("[data-regla]")];
+  // Se evalúan todos para que el usuario vea de una vez qué está mal.
+  const resultados = campos.map((input) => {
+    const valido = campoValido(input);
+    const fallo = input.closest(".campo").querySelector(".fallo");
+    input.classList.toggle("invalido", !valido);
+    if (!valido) {
+      fallo.textContent = t("error.invalid_" + input.dataset.regla);
+      fallo.hidden = false;
+    } else {
+      fallo.hidden = true;
+    }
+    return valido;
+  });
+  const primerFallo = campos.find((c) => c.classList.contains("invalido"));
+  if (primerFallo) primerFallo.focus();
+  return resultados.every(Boolean);
+}
+
+/** Conecta la validación en vivo: al escribir y al salir del campo. */
+function activarValidacion(form) {
+  form.querySelectorAll("[data-regla]").forEach((input) => {
+    input.addEventListener("blur", () => revisarCampo(input));
+    input.addEventListener("input", () => {
+      // Mientras se escribe solo se quita el error, no se añade: molesta menos.
+      if (input.classList.contains("invalido") && campoValido(input)) {
+        revisarCampo(input);
+      }
+    });
+  });
+}
+
+function limpiarFormulario(form) {
+  form.reset();
+  form.querySelectorAll("[data-regla]").forEach((input) => {
+    input.classList.remove("invalido", "valido");
+    input.closest(".campo").querySelector(".fallo").hidden = true;
+  });
+}
+
+const moneda = (valor) => t("currency", { amount: Number(valor).toFixed(2) });
 
 // --- Pintado de las tablas -------------------------------------------------
 
 function pintarLibros(libros) {
   if (libros.length === 0) {
-    tablaLibros.innerHTML = '<tr><td colspan="6" class="vacio">No hay libros en el catálogo.</td></tr>';
+    tablaLibros.innerHTML = `<tr><td colspan="7" class="vacio">${t("empty.books")}</td></tr>`;
     return;
   }
 
@@ -54,18 +139,19 @@ function pintarLibros(libros) {
         <td>${escapar(libro.title)}</td>
         <td>${escapar(libro.author)}</td>
         <td>${libro.year ?? ""}</td>
+        <td class="isbn">${libro.isbn ? escapar(libro.isbn) : "—"}</td>
         <td>
           <span class="badge ${libro.available ? "disponible" : "prestado"}">
-            ${libro.available ? "Disponible" : "Prestado"}
+            ${t(libro.available ? "status.available" : "status.borrowed")}
           </span>
         </td>
         <td class="acciones">
           <button class="estrella ${deseado ? "activa" : ""}" data-deseo="${libro.id}"
-                  title="${deseado ? "Quitar de mi lista" : "Añadir a mi lista"}">
+                  title="${t(deseado ? "action.wishlist_remove" : "action.wishlist_add")}">
             ${deseado ? "★" : "☆"}
           </button>
-          ${libro.available ? `<button data-prestar="${libro.id}">Prestar</button>` : ""}
-          <button class="peligro" data-eliminar="${libro.id}">Eliminar</button>
+          ${libro.available ? `<button data-prestar="${libro.id}">${t("action.lend")}</button>` : ""}
+          <button class="peligro" data-eliminar="${libro.id}">${t("action.delete")}</button>
         </td>
       </tr>
     `;
@@ -74,7 +160,7 @@ function pintarLibros(libros) {
 
 function pintarPrestamos(prestamos) {
   if (prestamos.length === 0) {
-    tablaPrestamos.innerHTML = '<tr><td colspan="7" class="vacio">Todavía no se ha prestado ningún libro.</td></tr>';
+    tablaPrestamos.innerHTML = `<tr><td colspan="7" class="vacio">${t("empty.loans")}</td></tr>`;
     return;
   }
 
@@ -87,12 +173,12 @@ function pintarPrestamos(prestamos) {
       <td>
         ${p.due_date}
         ${p.days_late > 0
-          ? `<span class="badge prestado">${p.days_late} d · ${soles(p.fine)}</span>`
+          ? `<span class="badge prestado">${p.days_late} d · ${moneda(p.fine)}</span>`
           : ""}
       </td>
       <td>${p.return_date || "—"}</td>
       <td class="acciones">
-        ${p.is_active ? `<button class="secundario" data-devolver="${p.id}">Devolver</button>` : ""}
+        ${p.is_active ? `<button class="secundario" data-devolver="${p.id}">${t("action.return")}</button>` : ""}
       </td>
     </tr>
   `).join("");
@@ -101,25 +187,24 @@ function pintarPrestamos(prestamos) {
 // --- Paneles con estado ----------------------------------------------------
 
 function pintarActividad(datos) {
-  const nombres = {
-    prestamos: "Préstamos",
-    devoluciones: "Devoluciones",
-    libros_registrados: "Libros registrados",
-    libros_eliminados: "Libros eliminados",
-  };
-
+  // Las claves del servidor ("prestamos") se traducen con "activity.prestamos".
   const filas = Object.entries(datos.counters)
     .map(([clave, valor]) => `
-      <li><span>${nombres[clave] || clave}</span><strong>${valor}</strong></li>
+      <li><span>${t("activity." + clave)}</span><strong>${valor}</strong></li>
     `).join("");
 
   panelActividad.innerHTML = `
     <ul class="contadores">
-      ${filas || '<li class="vacio">Sin actividad todavía.</li>'}
+      ${filas || `<li class="vacio">${t("activity.empty")}</li>`}
     </ul>
     <p class="pie">
-      Total de acciones: <strong>${datos.total}</strong>
-      ${datos.last_action ? ` · última: ${escapar(datos.last_action)} a las ${datos.last_action_at}` : ""}
+      ${t("activity.total")}: <strong>${datos.total}</strong>
+      ${datos.last_action
+        ? ` · ${t("activity.last", {
+              action: t("activity." + datos.last_action),
+              time: datos.last_action_at,
+            })}`
+        : ""}
     </p>
   `;
 }
@@ -128,11 +213,13 @@ function pintarDeseos(datos) {
   deseos = datos.book_ids;
 
   panelDeseos.innerHTML = datos.books.length === 0
-    ? '<p class="vacio">Tu lista está vacía.</p>'
+    ? `<p class="vacio">${t("wishlist.empty")}</p>`
     : `<ul class="chips">${datos.books.map((libro) =>
         `<li>${escapar(libro.title)}</li>`).join("")}</ul>`;
 
-  panelDeseos.innerHTML += `<p class="pie">${datos.books.length} de ${datos.max} libros.</p>`;
+  panelDeseos.innerHTML += `<p class="pie">${
+    t("wishlist.count", { count: datos.books.length, max: datos.max })
+  }</p>`;
 }
 
 // --- Recarga general -------------------------------------------------------
@@ -156,26 +243,28 @@ async function recargar() {
 
 // --- Acciones del usuario --------------------------------------------------
 
-document.getElementById("form-libro").addEventListener("submit", async (evento) => {
+const formLibro = document.getElementById("form-libro");
+
+formLibro.addEventListener("submit", async (evento) => {
   evento.preventDefault();
   limpiarMensaje();
 
-  const titulo = document.getElementById("titulo");
-  const autor = document.getElementById("autor");
-  const anio = document.getElementById("anio");
+  // Primera barrera: los regex en el navegador. Si algo falla no se envía nada.
+  if (!formularioValido(formLibro)) return;
 
   try {
     await api("/api/books", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        title: titulo.value,
-        author: autor.value,
-        year: anio.value,
+        title: document.getElementById("titulo").value,
+        author: document.getElementById("autor").value,
+        year: document.getElementById("anio").value,
+        isbn: document.getElementById("isbn").value,
       }),
     });
-    titulo.value = autor.value = anio.value = "";
-    mostrarMensaje("Libro agregado al catálogo.", "ok");
+    limpiarFormulario(formLibro);
+    mostrarMensaje(t("msg.book_added"), "ok");
     await recargar();
   } catch (error) {
     mostrarMensaje(error.message, "error");
@@ -197,19 +286,24 @@ document.getElementById("form-calculo").addEventListener("submit", async (evento
       `/api/tools/due-date?loan_date=${fecha}&days=${dias}`
     );
 
-    let html = `Prestado el <strong>${vencimiento.loan_date}</strong> con
-                ${vencimiento.days} días de plazo →
-                vence el <strong>${vencimiento.due_date}</strong>.`;
+    let html = t("calc.result", {
+      loan_date: vencimiento.loan_date,
+      days: vencimiento.days,
+      due_date: vencimiento.due_date,
+    });
 
     if (devolucion) {
       const multa = await api(
         `/api/tools/fine?due_date=${vencimiento.due_date}&reference_date=${devolucion}`
       );
-      html += multa.days_late > 0
-        ? `<br>Devuelto el ${devolucion}: <strong>${multa.days_late} días</strong>
-           de retraso → multa de <strong>${soles(multa.fine)}</strong>
-           (${soles(multa.daily_rate)} por día).`
-        : `<br>Devuelto el ${devolucion}: dentro del plazo, sin multa.`;
+      html += "<br>" + (multa.days_late > 0
+        ? t("calc.late", {
+            date: devolucion,
+            days: multa.days_late,
+            fine: moneda(multa.fine),
+            rate: moneda(multa.daily_rate),
+          })
+        : t("calc.ontime", { date: devolucion }));
     }
 
     resultadoCalculo.innerHTML = html;
@@ -223,7 +317,7 @@ document.getElementById("btn-reset-actividad").addEventListener("click", async (
   limpiarMensaje();
   try {
     await api("/api/activity/reset", { method: "POST" });
-    mostrarMensaje("Contadores del servidor reiniciados.", "ok");
+    mostrarMensaje(t("msg.activity_reset"), "ok");
     await recargar();
   } catch (error) {
     mostrarMensaje(error.message, "error");
@@ -234,7 +328,7 @@ document.getElementById("btn-vaciar-deseos").addEventListener("click", async () 
   limpiarMensaje();
   try {
     await api("/api/wishlist", { method: "DELETE" });
-    mostrarMensaje("Lista de deseos vaciada.", "ok");
+    mostrarMensaje(t("msg.wishlist_cleared"), "ok");
     await recargar();
   } catch (error) {
     mostrarMensaje(error.message, "error");
@@ -255,26 +349,20 @@ document.addEventListener("click", async (evento) => {
       const resultado = await api(`/api/wishlist/${deseo}`, { method: "POST" });
       mostrarMensaje(
         resultado.in_wishlist
-          ? "Libro añadido a tu lista de deseos."
-          : "Libro quitado de tu lista de deseos.",
+          ? t("msg.wishlist_added")
+          : t("msg.wishlist_removed"),
         "ok"
       );
     } else if (prestar) {
-      const persona = prompt("¿A quién se le presta el libro?");
-      if (persona === null) return;
-      await api("/api/loans", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ book_id: Number(prestar), borrower: persona }),
-      });
-      mostrarMensaje("Préstamo registrado.", "ok");
+      abrirFormularioPrestamo(Number(prestar), boton);
+      return;                       // el préstamo se registra al enviar el formulario
     } else if (devolver) {
       await api(`/api/loans/${devolver}/return`, { method: "POST" });
-      mostrarMensaje("Libro devuelto al catálogo.", "ok");
+      mostrarMensaje(t("msg.book_returned"), "ok");
     } else {
-      if (!confirm("¿Eliminar este libro del catálogo?")) return;
+      if (!confirm(t("confirm.delete"))) return;
       await api(`/api/books/${eliminar}`, { method: "DELETE" });
-      mostrarMensaje("Libro eliminado.", "ok");
+      mostrarMensaje(t("msg.book_deleted"), "ok");
     }
     await recargar();
   } catch (error) {
@@ -282,7 +370,96 @@ document.addEventListener("click", async (evento) => {
   }
 });
 
+// --- Formulario de préstamo -----------------------------------------------
+
+const capaPrestamo = document.getElementById("capa-prestamo");
+const formPrestamo = document.getElementById("form-prestamo");
+let libroAPrestar = null;
+
+function abrirFormularioPrestamo(bookId, boton) {
+  libroAPrestar = bookId;
+  const fila = boton.closest("tr");
+  const titulo = fila.children[1].textContent.trim();
+
+  document.getElementById("prestamo-libro").textContent =
+    t("loanform.book") + ": " + titulo;
+
+  limpiarFormulario(formPrestamo);
+  capaPrestamo.hidden = false;
+  document.getElementById("p-nombre").focus();
+}
+
+function cerrarFormularioPrestamo() {
+  capaPrestamo.hidden = true;
+  libroAPrestar = null;
+}
+
+document.getElementById("btn-cancelar-prestamo")
+  .addEventListener("click", cerrarFormularioPrestamo);
+
+// Cerrar pulsando fuera del cuadro o con la tecla Escape.
+capaPrestamo.addEventListener("click", (e) => {
+  if (e.target === capaPrestamo) cerrarFormularioPrestamo();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !capaPrestamo.hidden) cerrarFormularioPrestamo();
+});
+
+formPrestamo.addEventListener("submit", async (evento) => {
+  evento.preventDefault();
+  limpiarMensaje();
+
+  if (!formularioValido(formPrestamo)) return;
+
+  try {
+    await api("/api/loans", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        book_id: libroAPrestar,
+        borrower: document.getElementById("p-nombre").value,
+        dni: document.getElementById("p-dni").value,
+        email: document.getElementById("p-email").value,
+        phone: document.getElementById("p-telefono").value,
+      }),
+    });
+    cerrarFormularioPrestamo();
+    mostrarMensaje(t("msg.loan_created"), "ok");
+    await recargar();
+  } catch (error) {
+    // Si el servidor rechaza algo que el navegador dio por bueno, se ve aquí.
+    mostrarMensaje(error.message, "error");
+  }
+});
+
+// Cambiar de idioma: el servidor lo guarda en la sesión y se recarga la página
+// para que también los textos fijos (los que pinta Jinja) vengan traducidos.
+document.getElementById("selector-idioma").addEventListener("change", async (evento) => {
+  await api(`/api/i18n/${evento.target.value}`, { method: "POST" });
+  // Se navega SIN ?lang= en la URL: si se recargara tal cual, ese parámetro
+  // volvería a imponer el idioma anterior y anularía el cambio recién hecho.
+  window.location.href = window.location.pathname;
+});
+
 // Al abrir la página, la calculadora se rellena con la fecha de hoy.
 document.getElementById("calc-fecha").value = new Date().toISOString().slice(0, 10);
 
-recargar();
+/** Arranque: primero el catálogo de traducciones, después los datos. */
+async function iniciar() {
+  // El catálogo de idioma y los patrones de validación, antes de pintar nada.
+  const [i18n, validacion] = await Promise.all([
+    api("/api/i18n"),
+    api("/api/validation-rules"),
+  ]);
+
+  mensajes = i18n.messages;
+  reglas = validacion.patterns;
+  document.documentElement.lang = i18n.lang;
+
+  activarValidacion(formLibro);
+  activarValidacion(formPrestamo);
+
+  await recargar();
+}
+
+iniciar();

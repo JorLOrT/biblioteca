@@ -34,10 +34,10 @@ class WishlistService:
         try:
             book_id = int(book_id)
         except (TypeError, ValueError):
-            raise BusinessError("Debe indicar un libro válido.")
+            raise BusinessError("error.book_required")
 
         if self._books.get_by_id(book_id) is None:
-            raise NotFoundError("No existe un libro con id {}.".format(book_id))
+            raise NotFoundError("error.book_not_found", id=book_id)
 
         updated = list(wishlist)
 
@@ -47,9 +47,7 @@ class WishlistService:
 
         # Regla: la lista tiene un tamaño máximo.
         if len(updated) >= MAX_WISHLIST:
-            raise BusinessError(
-                "Tu lista de deseos admite como máximo {} libros.".format(MAX_WISHLIST)
-            )
+            raise BusinessError("error.wishlist_full", max=MAX_WISHLIST)
 
         updated.append(book_id)
         return updated

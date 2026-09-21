@@ -10,6 +10,7 @@ from typing import List
 from business import activity_service
 from business.exceptions import BusinessError, NotFoundError
 from business.library_calculator import calculate_due_date, calculate_fine
+from business.validators import validate_field
 from data_access.book_repository import BookRepository
 from data_access.loan_repository import LoanRepository
 from entities.loan import Loan
@@ -43,33 +44,46 @@ class LoanService:
 
         return loans
 
-    def lend_book(self, book_id: int, borrower: str) -> Loan:
-        """Registra el préstamo de un libro y lo marca como no disponible."""
-        if not borrower or not borrower.strip():
-            raise BusinessError("El nombre de quien se lleva el libro es obligatorio.")
+    def lend_book(self, book_id, borrower, dni="", email="", phone="") -> Loan:
+        """Registra el préstamo de un libro y lo marca como no disponible.
+
+        Los cuatro datos del prestatario se comprueban con las expresiones
+        regulares de `validators`, en el servidor: el navegador puede saltarse
+        su propia validación, esta no.
+        """
+        datos_prestatario = {
+            "borrower": validate_field("borrower", borrower),
+            "dni": validate_field("dni", dni),
+            "email": validate_field("email", email),
+            "phone": validate_field("phone", phone),
+        }
 
         try:
             book_id = int(book_id)
         except (TypeError, ValueError):
-            raise BusinessError("Debe indicar qué libro se va a prestar.")
+            raise BusinessError("error.book_required")
 
         book = self._books.get_by_id(book_id)
         if book is None:
-            raise NotFoundError("No existe un libro con id {}.".format(book_id))
+            raise NotFoundError("error.book_not_found", id=book_id)
 
         # Regla central: no se presta dos veces el mismo ejemplar.
         if not book.available:
             active_loan = self._loans.get_active_by_book(book.id)
-            holder = active_loan.borrower if active_loan else "otra persona"
             raise BusinessError(
-                'El libro "{}" ya está prestado a {}.'.format(book.title, holder)
+                "error.book_already_lent",
+                title=book.title,
+                borrower=active_loan.borrower if active_loan else "?",
             )
 
         loan = self._loans.create(
             Loan(
                 id=None,
                 book_id=book.id,
-                borrower=borrower.strip(),
+                borrower=datos_prestatario["borrower"],
+                borrower_dni=datos_prestatario["dni"],
+                borrower_email=datos_prestatario["email"],
+                borrower_phone=datos_prestatario["phone"],
                 loan_date=date.today().isoformat(),
                 return_date=None,
                 book_title=book.title,
@@ -87,14 +101,14 @@ class LoanService:
         """Cierra un préstamo activo y devuelve el libro al catálogo."""
         loan = self._loans.get_by_id(loan_id)
         if loan is None:
-            raise NotFoundError("No existe un préstamo con id {}.".format(loan_id))
+            raise NotFoundError("error.loan_not_found", id=loan_id)
 
         # Regla: un préstamo ya cerrado no se puede devolver otra vez.
         if not loan.is_active:
             raise BusinessError(
-                'El préstamo de "{}" ya fue devuelto el {}.'.format(
-                    loan.book_title, loan.return_date
-                )
+                "error.loan_already_returned",
+                title=loan.book_title,
+                date=loan.return_date,
             )
 
         self._loans.set_return_date(loan.id, date.today().isoformat())

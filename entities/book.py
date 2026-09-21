@@ -12,6 +12,7 @@ class Book:
     title: str
     author: str
     year: Optional[int]
+    isbn: Optional[str] = None
     available: bool = True
 
     def to_dict(self) -> dict:
@@ -21,5 +22,6 @@ class Book:
             "title": self.title,
             "author": self.author,
             "year": self.year,
+            "isbn": self.isbn,
             "available": self.available,
         }

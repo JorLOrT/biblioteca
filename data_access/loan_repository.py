@@ -24,6 +24,9 @@ class LoanRepository:
             id=row["id"],
             book_id=row["book_id"],
             borrower=row["borrower"],
+            borrower_dni=row["borrower_dni"],
+            borrower_email=row["borrower_email"],
+            borrower_phone=row["borrower_phone"],
             loan_date=row["loan_date"],
             return_date=row["return_date"],
             book_title=row["book_title"],
@@ -56,8 +59,10 @@ class LoanRepository:
     def create(self, loan: Loan) -> Loan:
         with get_connection() as connection:
             cursor = connection.execute(
-                "INSERT INTO loans (book_id, borrower, loan_date, return_date) VALUES (?, ?, ?, ?)",
-                (loan.book_id, loan.borrower, loan.loan_date, loan.return_date),
+                "INSERT INTO loans (book_id, borrower, borrower_dni, borrower_email, "
+                "borrower_phone, loan_date, return_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (loan.book_id, loan.borrower, loan.borrower_dni, loan.borrower_email,
+                 loan.borrower_phone, loan.loan_date, loan.return_date),
             )
             loan.id = cursor.lastrowid
         return loan

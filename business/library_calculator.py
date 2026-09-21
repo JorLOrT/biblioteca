@@ -17,14 +17,12 @@ DEFAULT_LOAN_DAYS = 15  # plazo estándar de un préstamo
 DAILY_FINE = 0.50       # multa por cada día de retraso
 
 
-def _parse_date(value: str, field: str) -> date:
+def _parse_date(value: str, error_key: str) -> date:
     """Convierte un texto AAAA-MM-DD en fecha, o lanza un error de negocio."""
     try:
         return date.fromisoformat(value)
     except (TypeError, ValueError):
-        raise BusinessError(
-            "La fecha {} debe tener el formato AAAA-MM-DD.".format(field)
-        )
+        raise BusinessError(error_key)
 
 
 def calculate_due_date(loan_date: str, days: int = DEFAULT_LOAN_DAYS) -> str:
@@ -39,12 +37,12 @@ def calculate_due_date(loan_date: str, days: int = DEFAULT_LOAN_DAYS) -> str:
     try:
         days_value = int(days)
     except (TypeError, ValueError):
-        raise BusinessError("El plazo debe ser un número de días.")
+        raise BusinessError("error.days_not_number")
 
     if days_value <= 0:
-        raise BusinessError("El plazo debe ser mayor que cero días.")
+        raise BusinessError("error.days_positive")
 
-    return (_parse_date(loan_date, "de préstamo") + timedelta(days=days_value)).isoformat()
+    return (_parse_date(loan_date, "error.invalid_date_loan") + timedelta(days=days_value)).isoformat()
 
 
 def calculate_fine(
@@ -59,8 +57,8 @@ def calculate_fine(
     >>> calculate_fine("2026-03-16", "2026-03-20")
     {'days_late': 4, 'fine': 2.0}
     """
-    due = _parse_date(due_date, "de vencimiento")
-    reference = _parse_date(reference_date, "de referencia")
+    due = _parse_date(due_date, "error.invalid_date_due")
+    reference = _parse_date(reference_date, "error.invalid_date_reference")
 
     days_late = max(0, (reference - due).days)
     return {"days_late": days_late, "fine": round(days_late * daily_rate, 2)}

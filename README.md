@@ -107,11 +107,11 @@ La primera vez se crea `library.db` con **6 libros de ejemplo**.
 | `GET` | `/` | La página web de la biblioteca |
 | `GET` | `/api/books` | Lista los libros (`?available=true` filtra los disponibles) |
 | `GET` | `/api/books/<id>` | Obtiene un libro |
-| `POST` | `/api/books` | Crea un libro — `{title, author, year}` |
+| `POST` | `/api/books` | Crea un libro — `{title, author, year, isbn}` |
 | `PUT` | `/api/books/<id>` | Actualiza un libro |
 | `DELETE` | `/api/books/<id>` | Elimina un libro |
 | `GET` | `/api/loans` | Lista los préstamos (activos e historial) |
-| `POST` | `/api/loans` | Presta un libro — `{book_id, borrower}` |
+| `POST` | `/api/loans` | Presta un libro — `{book_id, borrower, dni, email, phone}` |
 | `POST` | `/api/loans/<id>/return` | Registra la devolución |
 | `GET` | `/api/tools/due-date` | *Stateless* — calcula el vencimiento de un préstamo |
 | `GET` | `/api/tools/fine` | *Stateless* — calcula los días de retraso y la multa |
@@ -120,6 +120,9 @@ La primera vez se crea `library.db` con **6 libros de ejemplo**.
 | `GET` | `/api/wishlist` | *Stateful* — la lista de deseos de tu sesión |
 | `POST` | `/api/wishlist/<id>` | *Stateful* — añade o quita un libro de tu lista |
 | `DELETE` | `/api/wishlist` | *Stateful* — vacía tu lista |
+| `GET` | `/api/i18n` | Catálogo de traducciones del idioma actual |
+| `POST` | `/api/i18n/<lang>` | Guarda el idioma elegido en la sesión |
+| `GET` | `/api/validation-rules` | Expresiones regulares de validación, para el navegador |
 
 Códigos de respuesta: `200`/`201` correcto · `400` regla de negocio incumplida · `404` no existe.
 
@@ -175,7 +178,117 @@ curl -c cookies -b cookies -X POST localhost:5001/api/wishlist/4   # -> {"book_i
 
 ---
 
-## 6. Estructura de archivos
+## 6. Internacionalización (i18n)
+
+La aplicación está disponible en **español e inglés**, incluidos los mensajes de error.
+
+### Dónde vive el idioma
+
+El idioma es una cuestión de **presentación**, no de negocio. Por eso el módulo de traducción está
+dentro de `presentation/i18n/` y la capa de negocio nunca escribe texto en un idioma concreto:
+lanza una **clave** de mensaje y sus parámetros.
+
+```python
+# business/loan_service.py — el negocio solo dice QUÉ pasó
+raise BusinessError("error.book_already_lent", title=book.title, borrower=holder)
+
+# presentation/error_handlers.py — la presentación decide CÓMO contarlo
+{"error": translate(error.key, **error.params), "code": error.key}
+```
+
+Gracias a esto, `grep -rn "i18n\|translate" business/` no devuelve nada: el negocio no sabe en qué
+idioma se le hablará al usuario.
+
+### Cómo se elige el idioma
+
+1. `?lang=en` en la URL (además lo guarda en la sesión)
+2. el idioma guardado en la sesión
+3. la cabecera `Accept-Language` del navegador
+4. español por defecto
+
+### Añadir un idioma nuevo
+
+No hace falta tocar Python: se copia `presentation/i18n/es.json`, se traduce y se añade el código a
+`SUPPORTED` en `presentation/i18n/__init__.py`.
+
+```bash
+# El mismo error de negocio, en los dos idiomas
+curl -X POST 'localhost:5001/api/loans?lang=es' -H 'Content-Type: application/json' \
+     -d '{"book_id":1,"borrower":"Ana"}'
+# -> {"code":"error.book_already_lent","error":"El libro «...» ya está prestado a Luis."}
+
+curl -X POST 'localhost:5001/api/loans?lang=en' -H 'Content-Type: application/json' \
+     -d '{"book_id":1,"borrower":"Ana"}'
+# -> {"code":"error.book_already_lent","error":"The book \"...\" is already on loan to Luis."}
+```
+
+---
+
+## 7. Validación de formularios con expresiones regulares
+
+Los dos formularios de la aplicación se validan con **regex**: el de alta de libros y el de
+préstamo (que sustituye al antiguo `prompt()`).
+
+### Una sola fuente de verdad
+
+Los patrones se definen **una vez**, en la capa de negocio ([business/validators.py](business/validators.py)),
+y la capa de presentación los publica en `GET /api/validation-rules` para que el navegador use
+exactamente los mismos. Así no pueden quedar desincronizados.
+
+| Campo | Expresión regular | Qué acepta |
+|---|---|---|
+| `title` | `^(?!\s*$).{2,120}$` | 2–120 caracteres, no solo espacios |
+| `author` | `^[A-Za-zÁÉÍ…][A-Za-zÁÉÍ….'\- ]{2,79}$` | Letras, espacios, puntos, apóstrofos y guiones |
+| `year` | `^\d{4}$` | Exactamente cuatro cifras |
+| `isbn` | `^97[89][-\s]?(?:\d[-\s]?){9}\d$` | ISBN-13 con separadores opcionales |
+| `borrower` | `^[A-Za-zÁÉÍ…]{2,}(?: [A-Za-zÁÉÍ…]{2,})+$` | Dos palabras o más, sin cifras |
+| `dni` | `^\d{8}$` | DNI peruano, ocho cifras |
+| `email` | `^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$` | Correo electrónico |
+| `phone` | `^9\d{8}$` | Celular peruano, nueve cifras desde 9 |
+
+### Dos barreras, una autoridad
+
+El navegador valida **para avisar**; el servidor valida **porque manda**. Saltarse el JavaScript no
+sirve de nada:
+
+```bash
+curl -X POST localhost:5001/api/loans -H 'Content-Type: application/json' \
+     -d '{"book_id":2,"borrower":"Ana","dni":"123","email":"ana.pe","phone":"12345"}'
+# -> 400 {"code":"error.invalid_borrower",
+#         "error":"El nombre debe tener al menos dos palabras y ninguna cifra."}
+```
+
+Los mensajes están internacionalizados como el resto: el negocio lanza `error.invalid_dni` y la
+presentación lo traduce al idioma del usuario.
+
+### Formato y significado son cosas distintas
+
+El regex comprueba el **formato**; la regla de negocio comprueba el **significado**. Por eso el año
+`3000` pasa el regex (son cuatro cifras) y aun así se rechaza:
+
+```bash
+# -> 400 "El año debe estar entre 1450 y 2026."
+```
+
+---
+
+## 8. Documentación y capturas
+
+- `capturas/` — 14 capturas de la ejecución (español, inglés, errores traducidos, stateless,
+  stateful y validación por regex).
+- `Internacionalizacion_i18n.docx` — memoria del trabajo con esas capturas.
+- `docs/generar_documento.py` — regenera el documento: `.venv/bin/python docs/generar_documento.py`
+  (requiere `pip install -r docs/requirements.txt`).
+
+Las capturas se toman de forma automatizada contra una base de datos aparte, sin tocar la real:
+
+```bash
+LIBRARY_DB=/tmp/demo.db PORT=5003 .venv/bin/python app.py
+```
+
+---
+
+## 9. Estructura de archivos
 
 ```
 App-N-Capas/
@@ -197,11 +310,18 @@ App-N-Capas/
 │   ├── exceptions.py           #   BusinessError, NotFoundError
 │   ├── book_service.py         #   Reglas del catálogo
 │   ├── loan_service.py         #   Reglas de préstamo y devolución
+│   ├── validators.py           #   VALIDACIÓN POR REGEX (fuente de verdad)
 │   ├── library_calculator.py   #   STATELESS: cálculos puros
 │   ├── activity_service.py     #   STATEFUL: contadores en memoria
 │   └── wishlist_service.py     #   STATEFUL: lista de deseos (sesión)
 │
 └── presentation/               # CAPA DE PRESENTACIÓN
+    ├── i18n/                   #   INTERNACIONALIZACIÓN
+    │   ├── __init__.py         #     elección de idioma + translate()
+    │   ├── es.json             #     catálogo español (86 claves)
+    │   └── en.json             #     catálogo inglés  (86 claves)
+    ├── i18n_controller.py      #   /api/i18n
+    ├── validation_controller.py#   /api/validation-rules
     ├── home_controller.py      #   Sirve la página
     ├── book_controller.py      #   /api/books
     ├── loan_controller.py      #   /api/loans

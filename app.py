@@ -14,15 +14,17 @@ from flask import Flask
 from data_access.database import init_db
 from presentation import (
     activity_bp,
+    i18n_bp,
     book_bp,
     home_bp,
     loan_bp,
     register_error_handlers,
     tools_bp,
+    validation_bp,
     wishlist_bp,
 )
 
-PORT = 5001  # el 5000 lo ocupa AirPlay Receiver en macOS
+PORT = int(os.environ.get("PORT", 5001))  # el 5000 lo ocupa AirPlay Receiver en macOS
 
 
 def create_app() -> Flask:
@@ -43,6 +45,8 @@ def create_app() -> Flask:
     app.register_blueprint(home_bp)
     app.register_blueprint(book_bp)
     app.register_blueprint(loan_bp)
+    app.register_blueprint(i18n_bp)       # idioma (i18n)
+    app.register_blueprint(validation_bp) # patrones regex para el navegador
     app.register_blueprint(tools_bp)      # endpoints STATELESS
     app.register_blueprint(activity_bp)   # endpoints STATEFUL (memoria)
     app.register_blueprint(wishlist_bp)   # endpoints STATEFUL (sesión)

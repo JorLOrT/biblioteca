@@ -27,6 +27,7 @@ def create_book():
         title=payload.get("title", ""),
         author=payload.get("author", ""),
         year=payload.get("year"),
+        isbn=payload.get("isbn", ""),
     )
     return jsonify(book.to_dict()), 201
 
@@ -39,6 +40,7 @@ def update_book(book_id: int):
         title=payload.get("title", ""),
         author=payload.get("author", ""),
         year=payload.get("year"),
+        isbn=payload.get("isbn", ""),
     )
     return jsonify(book.to_dict())
 

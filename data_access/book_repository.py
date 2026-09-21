@@ -21,6 +21,7 @@ class BookRepository:
             title=row["title"],
             author=row["author"],
             year=row["year"],
+            isbn=row["isbn"],
             available=bool(row["available"]),
         )
 
@@ -44,8 +45,9 @@ class BookRepository:
     def create(self, book: Book) -> Book:
         with get_connection() as connection:
             cursor = connection.execute(
-                "INSERT INTO books (title, author, year, available) VALUES (?, ?, ?, ?)",
-                (book.title, book.author, book.year, int(book.available)),
+                "INSERT INTO books (title, author, year, isbn, available) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (book.title, book.author, book.year, book.isbn, int(book.available)),
             )
             book.id = cursor.lastrowid
         return book
@@ -53,8 +55,10 @@ class BookRepository:
     def update(self, book: Book) -> Book:
         with get_connection() as connection:
             connection.execute(
-                "UPDATE books SET title = ?, author = ?, year = ?, available = ? WHERE id = ?",
-                (book.title, book.author, book.year, int(book.available), book.id),
+                "UPDATE books SET title = ?, author = ?, year = ?, isbn = ?, "
+                "available = ? WHERE id = ?",
+                (book.title, book.author, book.year, book.isbn,
+                 int(book.available), book.id),
             )
         return book
 

@@ -20,6 +20,9 @@ def lend_book():
     loan = service.lend_book(
         book_id=payload.get("book_id"),
         borrower=payload.get("borrower", ""),
+        dni=payload.get("dni", ""),
+        email=payload.get("email", ""),
+        phone=payload.get("phone", ""),
     )
     return jsonify(loan.to_dict()), 201
 
