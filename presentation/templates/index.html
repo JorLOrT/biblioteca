@@ -45,13 +45,19 @@
           <small class="pista">{{ t('hint.year') }}</small>
           <small class="fallo" hidden></small>
         </div>
-        <div class="campo">
-          <input type="text" id="isbn" data-regla="isbn" placeholder="{{ t('form.isbn') }}">
-          <small class="pista">{{ t('hint.isbn') }}</small>
+        <div class="campo ancho">
+          <div class="campo-con-boton">
+            <input type="text" id="isbn" data-regla="isbn" placeholder="{{ t('form.isbn') }}">
+            <button type="button" class="secundario" id="btn-buscar-isbn">{{ t('form.lookup') }}</button>
+          </div>
+          <small class="pista">{{ t('hint.lookup') }}</small>
           <small class="fallo" hidden></small>
         </div>
         <button type="submit">{{ t('form.add') }}</button>
       </form>
+
+      <!-- Resultado de la consulta al servicio externo (Open Library) -->
+      <div id="resultado-externo" class="externo" hidden></div>
     </section>
 
     <section class="tarjeta">

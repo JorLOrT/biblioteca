@@ -94,7 +94,6 @@
   "hint.title": "Between 2 and 120 characters.",
   "hint.author": "Letters, spaces, dots, apostrophes and hyphens only.",
   "hint.year": "Four digits. E.g. 1967",
-  "hint.isbn": "13 digits starting with 978 or 979. E.g. 978-0-306-40615-7",
   "hint.borrower": "At least two words, no digits. E.g. María López",
   "hint.dni": "Exactly eight digits. E.g. 12345678",
   "hint.email": "E.g. name@domain.com",
@@ -106,5 +105,15 @@
   "error.invalid_borrower": "The name must have at least two words and no digits.",
   "error.invalid_dni": "The ID number must have exactly eight digits.",
   "error.invalid_email": "The email address is not in a valid format.",
-  "error.invalid_phone": "The mobile phone must have nine digits and start with 9."
+  "error.invalid_phone": "The mobile phone must have nine digits and start with 9.",
+  "form.lookup": "Look up",
+  "hint.lookup": "Type the ISBN and press Look up to fetch the data from Open Library.",
+  "ext.searching": "Querying Open Library…",
+  "ext.found": "Found in Open Library: “{title}”.",
+  "ext.filled": "Title, author and year were filled in.",
+  "ext.not_found": "Open Library has no book with that ISBN.",
+  "ext.error": "Open Library could not be reached. Check your connection.",
+  "ext.timeout": "Open Library took too long to respond.",
+  "ext.source": "Data from Open Library (openlibrary.org)",
+  "ext.no_cover": "No cover"
 }

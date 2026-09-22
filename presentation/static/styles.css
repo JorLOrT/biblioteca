@@ -298,6 +298,8 @@ form.vertical { flex-direction: column; }
 }
 
 .campo.estrecho { flex: 0 1 110px; }
+/* El ISBN comparte fila con su botón: necesita más sitio. */
+.campo.ancho    { flex: 1.6 1 270px; }
 form.vertical .campo { width: 100%; flex: none; }
 
 .campo label {
@@ -378,4 +380,62 @@ td.isbn {
   justify-content: flex-end;
   gap: .5rem;
   width: 100%;
+}
+
+/* --- Consulta al servicio externo (Open Library) ------------------------- */
+
+.campo-con-boton {
+  display: flex;
+  gap: .4rem;
+}
+
+.campo-con-boton input { flex: 1 1 auto; }
+.campo-con-boton button { flex: none; }
+
+.externo {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: .85rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--borde);
+  background: #f8fafc;
+  font-size: .88rem;
+}
+
+.externo[hidden] { display: none; }
+.externo p { margin: 0 0 .25rem; }
+
+.externo.ok     { background: #f2faf6; border-color: #bce3d1; }
+.externo.aviso  { background: #fdfaf0; border-color: #ecdcb0; }
+.externo.error  { background: #fdf4f3; border-color: #f0c8c3; }
+.externo.neutro { background: #f4f6f8; }
+
+.externo .buscando { color: var(--suave); font-style: italic; }
+
+.externo .fuente {
+  margin-top: .4rem;
+  font-size: .75rem;
+  color: var(--suave);
+}
+
+.portada {
+  width: 74px;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
+  flex: none;
+}
+
+.portada.vacia {
+  height: 104px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: #e7ebef;
+  color: var(--suave);
+  font-size: .7rem;
+  box-shadow: none;
+  padding: .3rem;
 }

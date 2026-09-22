@@ -264,6 +264,7 @@ formLibro.addEventListener("submit", async (evento) => {
       }),
     });
     limpiarFormulario(formLibro);
+    panelExterno.hidden = true;
     mostrarMensaje(t("msg.book_added"), "ok");
     await recargar();
   } catch (error) {
@@ -367,6 +368,105 @@ document.addEventListener("click", async (evento) => {
     await recargar();
   } catch (error) {
     mostrarMensaje(error.message, "error");
+  }
+});
+
+
+// ===========================================================================
+//  CONSUMO DE UN SERVICIO EXTERNO DESDE EL FRONT END
+//
+//  Esta llamada sale del NAVEGADOR directamente a openlibrary.org. No pasa por
+//  nuestro servidor Flask: es el propio cliente quien habla con el tercero.
+//
+//  Open Library es una API pública de Internet Archive. No necesita clave y
+//  responde con la cabecera `Access-Control-Allow-Origin: *`, que es lo que
+//  permite que un navegador la llame desde otro dominio.
+//
+//  Al ser un servicio ajeno hay que contar con que falle: se le pone un plazo
+//  máximo de respuesta y se tratan por separado «no encontrado», «tardó
+//  demasiado» y «no se pudo conectar».
+// ===========================================================================
+
+const OPEN_LIBRARY = "https://openlibrary.org/search.json";
+const PLAZO_EXTERNO = 8000; // ms antes de darlo por perdido
+
+const panelExterno = document.getElementById("resultado-externo");
+
+function mostrarExterno(html, tipo) {
+  panelExterno.className = "externo " + tipo;
+  panelExterno.innerHTML = html;
+  panelExterno.hidden = false;
+}
+
+/** Consulta un ISBN en Open Library. Devuelve los datos del libro o null. */
+async function buscarEnOpenLibrary(isbn) {
+  // AbortController corta la petición si el servicio externo no responde.
+  const corte = new AbortController();
+  const temporizador = setTimeout(() => corte.abort(), PLAZO_EXTERNO);
+
+  const url = `${OPEN_LIBRARY}?q=isbn:${encodeURIComponent(isbn)}&limit=1`
+            + `&fields=title,author_name,first_publish_year,cover_i`;
+
+  try {
+    const respuesta = await fetch(url, { signal: corte.signal });
+    if (!respuesta.ok) throw new Error("HTTP " + respuesta.status);
+
+    const datos = await respuesta.json();
+    return datos.docs && datos.docs.length ? datos.docs[0] : null;
+  } finally {
+    clearTimeout(temporizador);
+  }
+}
+
+document.getElementById("btn-buscar-isbn").addEventListener("click", async () => {
+  limpiarMensaje();
+  const campoIsbn = document.getElementById("isbn");
+
+  // Se reutiliza el mismo regex del servidor antes de molestar al tercero.
+  if (!revisarCampo(campoIsbn)) {
+    panelExterno.hidden = true;  // que no quede a la vista un resultado viejo
+    return;
+  }
+
+  const isbn = campoIsbn.value.trim().replace(/[-\s]/g, "");
+  mostrarExterno(`<p class="buscando">${t("ext.searching")}</p>`, "neutro");
+
+  try {
+    const libro = await buscarEnOpenLibrary(isbn);
+
+    if (!libro) {
+      mostrarExterno(`<p>${t("ext.not_found")}</p>`, "aviso");
+      return;
+    }
+
+    // Se rellena el formulario con lo que devolvió el servicio externo.
+    document.getElementById("titulo").value = libro.title || "";
+    document.getElementById("autor").value =
+      (libro.author_name && libro.author_name[0]) || "";
+    document.getElementById("anio").value = libro.first_publish_year || "";
+
+    // Los campos rellenados se revalidan: lo que llega de fuera tampoco se
+    // da por bueno sin comprobarlo.
+    ["titulo", "autor", "anio"].forEach((id) =>
+      revisarCampo(document.getElementById(id))
+    );
+
+    const portada = libro.cover_i
+      ? `<img src="https://covers.openlibrary.org/b/id/${libro.cover_i}-M.jpg"
+              alt="${escapar(libro.title)}" class="portada">`
+      : `<div class="portada vacia">${t("ext.no_cover")}</div>`;
+
+    mostrarExterno(`
+      ${portada}
+      <div>
+        <p><strong>${t("ext.found", { title: escapar(libro.title) })}</strong></p>
+        <p>${t("ext.filled")}</p>
+        <p class="fuente">${t("ext.source")}</p>
+      </div>
+    `, "ok");
+  } catch (error) {
+    const clave = error.name === "AbortError" ? "ext.timeout" : "ext.error";
+    mostrarExterno(`<p>${t(clave)}</p>`, "error");
   }
 });
 
