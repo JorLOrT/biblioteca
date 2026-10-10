@@ -145,7 +145,6 @@ Aparte de esta API, el navegador abre dos conexiones que no siguen el ciclo peti
 App-N-Capas/
 ├── app.py                      # Ensambla las capas y arranca Flask
 ├── requirements.txt · Dockerfile
-├── pyproject.toml · requirements-dev.txt · stubs/   # Revisión del código (ruff y mypy)
 │
 ├── entities/                   # ENTIDADES
 │   └── book.py · loan.py
@@ -173,16 +172,3 @@ App-N-Capas/
     ├── templates/index.html
     └── static/app.js · styles.css
 ```
-
----
-
-## Revisar el código
-
-```bash
-.venv/bin/pip install -r requirements-dev.txt
-.venv/bin/ruff check .   # estilo PEP 8, nombres, código muerto, complejidad y seguridad
-.venv/bin/mypy           # tipos, en modo estricto
-```
-
-Las reglas están en `pyproject.toml`. `flask-sock` no publica sus tipos, así que `stubs/`
-declara solo la parte que usa la aplicación.
