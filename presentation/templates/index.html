@@ -9,14 +9,14 @@
 <body>
 
   <header>
-    <div class="cabecera">
+    <div class="header-bar">
       <div>
         <h1>📚 {{ t('app.title') }}</h1>
         <p class="subtitle">{{ t('app.subtitle') }}</p>
       </div>
-      <div class="idioma">
-        <label for="selector-idioma">{{ t('lang.label') }}</label>
-        <select id="selector-idioma">
+      <div class="language">
+        <label for="language-select">{{ t('lang.label') }}</label>
+        <select id="language-select">
           <option value="es" {% if lang == 'es' %}selected{% endif %}>Español</option>
           <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
         </select>
@@ -25,42 +25,42 @@
   </header>
 
   <main>
-    <div id="mensaje" class="mensaje" hidden></div>
+    <div id="notice" class="notice" hidden></div>
 
-    <section class="tarjeta">
+    <section class="card">
       <h2>{{ t('form.add_book') }}</h2>
-      <form id="form-libro" class="validado" autocomplete="off" novalidate>
-        <div class="campo">
-          <input type="text" id="titulo" data-regla="title" placeholder="{{ t('form.title') }}">
-          <small class="pista">{{ t('hint.title') }}</small>
-          <small class="fallo" hidden></small>
+      <form id="book-form" class="validated" autocomplete="off" novalidate>
+        <div class="field">
+          <input type="text" id="book-title" data-rule="title" placeholder="{{ t('form.title') }}">
+          <small class="hint">{{ t('hint.title') }}</small>
+          <small class="field-error" hidden></small>
         </div>
-        <div class="campo">
-          <input type="text" id="autor" data-regla="author" placeholder="{{ t('form.author') }}">
-          <small class="pista">{{ t('hint.author') }}</small>
-          <small class="fallo" hidden></small>
+        <div class="field">
+          <input type="text" id="book-author" data-rule="author" placeholder="{{ t('form.author') }}">
+          <small class="hint">{{ t('hint.author') }}</small>
+          <small class="field-error" hidden></small>
         </div>
-        <div class="campo estrecho">
-          <input type="text" id="anio" data-regla="year" inputmode="numeric" placeholder="{{ t('form.year') }}">
-          <small class="pista">{{ t('hint.year') }}</small>
-          <small class="fallo" hidden></small>
+        <div class="field narrow">
+          <input type="text" id="book-year" data-rule="year" inputmode="numeric" placeholder="{{ t('form.year') }}">
+          <small class="hint">{{ t('hint.year') }}</small>
+          <small class="field-error" hidden></small>
         </div>
-        <div class="campo ancho">
-          <div class="campo-con-boton">
-            <input type="text" id="isbn" data-regla="isbn" placeholder="{{ t('form.isbn') }}">
-            <button type="button" class="secundario" id="btn-buscar-isbn">{{ t('form.lookup') }}</button>
+        <div class="field wide">
+          <div class="field-with-button">
+            <input type="text" id="book-isbn" data-rule="isbn" placeholder="{{ t('form.isbn') }}">
+            <button type="button" class="secondary" id="isbn-lookup">{{ t('form.lookup') }}</button>
           </div>
-          <small class="pista">{{ t('hint.lookup') }}</small>
-          <small class="fallo" hidden></small>
+          <small class="hint">{{ t('hint.lookup') }}</small>
+          <small class="field-error" hidden></small>
         </div>
         <button type="submit">{{ t('form.add') }}</button>
       </form>
 
       <!-- Resultado de la consulta al servicio externo (Open Library) -->
-      <div id="resultado-externo" class="externo" hidden></div>
+      <div id="lookup-result" class="lookup-result" hidden></div>
     </section>
 
-    <section class="tarjeta">
+    <section class="card">
       <h2>{{ t('catalog.heading') }}</h2>
       <table>
         <thead>
@@ -74,11 +74,11 @@
             <th>{{ t('table.actions') }}</th>
           </tr>
         </thead>
-        <tbody id="tabla-libros"></tbody>
+        <tbody id="book-rows"></tbody>
       </table>
     </section>
 
-    <section class="tarjeta">
+    <section class="card">
       <h2>{{ t('loans.heading') }}</h2>
       <table>
         <thead>
@@ -92,127 +92,127 @@
             <th>{{ t('table.actions') }}</th>
           </tr>
         </thead>
-        <tbody id="tabla-prestamos"></tbody>
+        <tbody id="loan-rows"></tbody>
       </table>
     </section>
 
     <!-- ================= FUNCIONES STATELESS ================= -->
-    <section class="tarjeta destacada stateless">
+    <section class="card featured stateless">
       <h2>🧮 {{ t('stateless.heading') }}</h2>
-      <p class="nota">{{ t('stateless.note') }}</p>
+      <p class="note">{{ t('stateless.note') }}</p>
 
-      <form id="form-calculo" autocomplete="off">
-        <label>{{ t('calc.loan_date') }} <input type="date" id="calc-fecha" required></label>
-        <label>{{ t('calc.days') }} <input type="number" id="calc-dias" value="15" min="1" required></label>
-        <label>{{ t('calc.returned_on') }} <input type="date" id="calc-devolucion"></label>
+      <form id="calc-form" autocomplete="off">
+        <label>{{ t('calc.loan_date') }} <input type="date" id="calc-loan-date" required></label>
+        <label>{{ t('calc.days') }} <input type="number" id="calc-days" value="15" min="1" required></label>
+        <label>{{ t('calc.returned_on') }} <input type="date" id="calc-return-date"></label>
         <button type="submit">{{ t('calc.submit') }}</button>
       </form>
 
-      <div id="resultado-calculo" class="resultado" hidden></div>
+      <div id="calc-result" class="result" hidden></div>
     </section>
 
     <!-- ================= FUNCIONES STATEFUL ================= -->
-    <section class="tarjeta destacada stateful">
+    <section class="card featured stateful">
       <h2>🧠 {{ t('stateful.heading') }}</h2>
 
-      <div class="columnas">
+      <div class="columns">
         <div>
           <h3>{{ t('activity.heading') }} <small>{{ t('activity.subtitle') }}</small></h3>
-          <p class="nota">{{ t('activity.note') }}</p>
-          <div id="actividad"></div>
-          <button class="peligro" id="btn-reset-actividad">{{ t('activity.reset') }}</button>
+          <p class="note">{{ t('activity.note') }}</p>
+          <div id="activity"></div>
+          <button class="danger" id="activity-reset">{{ t('activity.reset') }}</button>
         </div>
 
         <div>
           <h3>{{ t('wishlist.heading') }} <small>{{ t('wishlist.subtitle') }}</small></h3>
-          <p class="nota">{{ t('wishlist.note') }}</p>
-          <div id="lista-deseos"></div>
-          <button class="peligro" id="btn-vaciar-deseos">{{ t('wishlist.clear') }}</button>
+          <p class="note">{{ t('wishlist.note') }}</p>
+          <div id="wishlist"></div>
+          <button class="danger" id="wishlist-clear">{{ t('wishlist.clear') }}</button>
         </div>
       </div>
     </section>
 
     <!-- ================= CHAT POR WEBSOCKET ================= -->
-    <section class="tarjeta destacada chat">
-      <div class="chat-cabecera">
+    <section class="card featured chat">
+      <div class="chat-header">
         <h2>💬 {{ t('chat.heading') }}</h2>
-        <span id="chat-estado" class="estado-conexion">{{ t('chat.connecting') }}</span>
+        <span id="chat-status" class="connection-status">{{ t('chat.connecting') }}</span>
       </div>
-      <p class="nota">{{ t('chat.note') }}</p>
+      <p class="note">{{ t('chat.note') }}</p>
 
       <!-- Paso 1: identificarse. No hay registro ni contraseña. -->
-      <form id="form-chat-entrar" class="validado" autocomplete="off" novalidate>
-        <div class="campo">
-          <label for="chat-apodo">{{ t('chat.nickname') }}</label>
-          <input type="text" id="chat-apodo" data-regla="nickname" maxlength="24">
-          <small class="pista">{{ t('hint.nickname') }}</small>
-          <small class="fallo" hidden></small>
+      <form id="chat-join-form" class="validated" autocomplete="off" novalidate>
+        <div class="field">
+          <label for="chat-nickname">{{ t('chat.nickname') }}</label>
+          <input type="text" id="chat-nickname" data-rule="nickname" maxlength="24">
+          <small class="hint">{{ t('hint.nickname') }}</small>
+          <small class="field-error" hidden></small>
         </div>
-        <div class="campo">
-          <label for="chat-correo">{{ t('chat.email') }}</label>
-          <input type="text" id="chat-correo" data-regla="email">
-          <small class="pista">{{ t('hint.chat_email') }}</small>
-          <small class="fallo" hidden></small>
+        <div class="field">
+          <label for="chat-email">{{ t('chat.email') }}</label>
+          <input type="text" id="chat-email" data-rule="email">
+          <small class="hint">{{ t('hint.chat_email') }}</small>
+          <small class="field-error" hidden></small>
         </div>
         <button type="submit">{{ t('chat.enter') }}</button>
       </form>
 
       <!-- Paso 2: la sala, una vez identificado. -->
-      <div id="chat-sala" hidden>
-        <div class="chat-barra">
-          <span id="chat-yo" class="chat-yo"></span>
-          <span id="chat-conectados" class="chat-conectados"></span>
-          <button type="button" class="peligro" id="btn-chat-salir">{{ t('chat.leave') }}</button>
+      <div id="chat-room" hidden>
+        <div class="chat-bar">
+          <span id="chat-me" class="chat-me"></span>
+          <span id="chat-online" class="chat-online"></span>
+          <button type="button" class="danger" id="chat-leave">{{ t('chat.leave') }}</button>
         </div>
 
-        <ul id="chat-mensajes" class="chat-mensajes"></ul>
+        <ul id="chat-messages" class="chat-messages"></ul>
 
-        <form id="form-chat-enviar" class="chat-enviar" autocomplete="off">
-          <input type="text" id="chat-texto" maxlength="500"
+        <form id="chat-send-form" class="chat-send" autocomplete="off">
+          <input type="text" id="chat-text" maxlength="500"
                  placeholder="{{ t('chat.placeholder') }}">
           <button type="submit">{{ t('chat.send') }}</button>
         </form>
-        <small class="fallo" id="chat-fallo" hidden></small>
+        <small class="field-error" id="chat-error" hidden></small>
       </div>
     </section>
   </main>
 
   <!-- ====== FORMULARIO DE PRÉSTAMO VALIDADO CON REGEX ====== -->
-  <div id="capa-prestamo" class="capa" hidden>
-    <div class="dialogo">
+  <div id="loan-overlay" class="overlay" hidden>
+    <div class="dialog">
       <h2>{{ t('loanform.heading') }}</h2>
-      <p class="nota" id="prestamo-libro"></p>
+      <p class="note" id="loan-book"></p>
 
-      <form id="form-prestamo" class="validado vertical" autocomplete="off" novalidate>
-        <div class="campo">
-          <label for="p-nombre">{{ t('loanform.borrower') }}</label>
-          <input type="text" id="p-nombre" data-regla="borrower">
-          <small class="pista">{{ t('hint.borrower') }}</small>
-          <small class="fallo" hidden></small>
+      <form id="loan-form" class="validated vertical" autocomplete="off" novalidate>
+        <div class="field">
+          <label for="loan-borrower">{{ t('loanform.borrower') }}</label>
+          <input type="text" id="loan-borrower" data-rule="borrower">
+          <small class="hint">{{ t('hint.borrower') }}</small>
+          <small class="field-error" hidden></small>
         </div>
-        <div class="campo">
-          <label for="p-dni">{{ t('loanform.dni') }}</label>
-          <input type="text" id="p-dni" data-regla="dni" inputmode="numeric" maxlength="8">
-          <small class="pista">{{ t('hint.dni') }}</small>
-          <small class="fallo" hidden></small>
+        <div class="field">
+          <label for="loan-dni">{{ t('loanform.dni') }}</label>
+          <input type="text" id="loan-dni" data-rule="dni" inputmode="numeric" maxlength="8">
+          <small class="hint">{{ t('hint.dni') }}</small>
+          <small class="field-error" hidden></small>
         </div>
-        <div class="campo">
-          <label for="p-email">{{ t('loanform.email') }}</label>
-          <input type="text" id="p-email" data-regla="email">
-          <small class="pista">{{ t('hint.email') }}</small>
-          <small class="fallo" hidden></small>
+        <div class="field">
+          <label for="loan-email">{{ t('loanform.email') }}</label>
+          <input type="text" id="loan-email" data-rule="email">
+          <small class="hint">{{ t('hint.email') }}</small>
+          <small class="field-error" hidden></small>
         </div>
-        <div class="campo">
-          <label for="p-telefono">{{ t('loanform.phone') }}</label>
-          <input type="text" id="p-telefono" data-regla="phone" inputmode="numeric" maxlength="9">
-          <small class="pista">{{ t('hint.phone') }}</small>
-          <small class="fallo" hidden></small>
+        <div class="field">
+          <label for="loan-phone">{{ t('loanform.phone') }}</label>
+          <input type="text" id="loan-phone" data-rule="phone" inputmode="numeric" maxlength="9">
+          <small class="hint">{{ t('hint.phone') }}</small>
+          <small class="field-error" hidden></small>
         </div>
 
-        <p class="nota">{{ t('loanform.note') }}</p>
+        <p class="note">{{ t('loanform.note') }}</p>
 
-        <div class="botonera">
-          <button type="button" class="peligro" id="btn-cancelar-prestamo">{{ t('loanform.cancel') }}</button>
+        <div class="button-row">
+          <button type="button" class="danger" id="loan-cancel">{{ t('loanform.cancel') }}</button>
           <button type="submit">{{ t('loanform.submit') }}</button>
         </div>
       </form>

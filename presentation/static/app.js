@@ -1,50 +1,83 @@
 // Cliente de la API REST. Solo habla HTTP con la capa de presentación:
 // no conoce ni las reglas de negocio ni la base de datos.
 
-const mensaje = document.getElementById("mensaje");
-const tablaLibros = document.getElementById("tabla-libros");
-const tablaPrestamos = document.getElementById("tabla-prestamos");
-const panelActividad = document.getElementById("actividad");
-const panelDeseos = document.getElementById("lista-deseos");
-const resultadoCalculo = document.getElementById("resultado-calculo");
+const notice = document.getElementById("notice");
+const bookForm = document.getElementById("book-form");
+const bookRows = document.getElementById("book-rows");
+const loanRows = document.getElementById("loan-rows");
+const activityPanel = document.getElementById("activity");
+const wishlistPanel = document.getElementById("wishlist");
+const calcForm = document.getElementById("calc-form");
+const calcResult = document.getElementById("calc-result");
+const lookupResult = document.getElementById("lookup-result");
 
-let deseos = [];    // copia local de la lista de deseos que guarda la sesión
-let mensajes = {};  // catálogo de traducciones que entrega /api/i18n
-let reglas = {};    // expresiones regulares que entrega /api/validation-rules
+let books = [];     // último catálogo recibido, para buscar un libro por su id
+let wishlist = [];  // copia local de la lista de deseos que guarda la sesión
+let messages = {};  // catálogo de traducciones que entrega /api/i18n
+let rules = {};     // expresiones regulares que entrega /api/validation-rules
 
 /** Traduce una clave sustituyendo sus parámetros: t("wishlist.count", {count: 2, max: 5}) */
-function t(clave, params = {}) {
-  let texto = mensajes[clave] ?? clave;
-  for (const [nombre, valor] of Object.entries(params)) {
-    texto = texto.split(`{${nombre}}`).join(valor);
+function t(key, params = {}) {
+  let text = messages[key] ?? key;
+  for (const [name, value] of Object.entries(params)) {
+    text = text.split(`{${name}}`).join(value);
   }
-  return texto;
+  return text;
 }
 
-function mostrarMensaje(texto, tipo) {
-  mensaje.textContent = texto;
-  mensaje.className = "mensaje " + tipo;
-  mensaje.hidden = false;
+function showNotice(text, kind) {
+  notice.textContent = text;
+  notice.className = "notice " + kind;
+  notice.hidden = false;
 }
 
-function limpiarMensaje() {
-  mensaje.hidden = true;
+function clearNotice() {
+  notice.hidden = true;
 }
 
-/** Llama a la API y convierte el {error} del servidor en una excepción. */
-async function api(url, opciones) {
-  const respuesta = await fetch(url, opciones);
-  const datos = await respuesta.json();
-  if (!respuesta.ok) {
-    throw new Error(datos.error || t("error.unexpected"));
+/** Llama a la API y convierte el {error} del servidor en una excepción.
+ *  Si la respuesta ni siquiera es JSON (un 500 en HTML, por ejemplo) se usa el
+ *  mensaje genérico, en lugar del error interno de leer el JSON. */
+async function api(url, options) {
+  const response = await fetch(url, options);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || t("error.unexpected"));
   }
-  return datos;
+  return data;
 }
 
-function escapar(texto) {
-  const div = document.createElement("div");
-  div.textContent = texto == null ? "" : texto;
-  return div.innerHTML;
+function postJson(url, body) {
+  return api(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Ejecuta una acción del usuario: borra el aviso anterior y, si algo falla,
+ *  muestra el error. Es el try/catch que antes repetía cada botón. */
+async function runAction(action) {
+  clearNotice();
+  try {
+    await action();
+  } catch (error) {
+    showNotice(error.message, "error");
+  }
+}
+
+/** Avisa de que la acción salió bien y vuelve a pintar los datos. */
+async function succeed(messageKey) {
+  showNotice(t(messageKey), "ok");
+  await reload();
+}
+
+const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+
+/** Escapa un texto para insertarlo en HTML. Incluye las comillas, para que
+ *  también sea seguro dentro de un atributo (`alt="..."`). */
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
 }
 
 // ===========================================================================
@@ -55,130 +88,118 @@ function escapar(texto) {
 // ===========================================================================
 
 /** ¿Encaja el valor de este campo con su expresión regular? */
-function campoValido(input) {
-  const patron = reglas[input.dataset.regla];
-  if (!patron) return true;
-  return new RegExp(patron).test(input.value.trim());
+function fieldIsValid(input) {
+  const pattern = rules[input.dataset.rule];
+  if (!pattern) return true;
+  return new RegExp(pattern).test(input.value.trim());
 }
 
-/** Pinta el campo y muestra u oculta su mensaje de error. */
-function revisarCampo(input, mostrarError = true) {
-  const contenedor = input.closest(".campo");
-  const fallo = contenedor.querySelector(".fallo");
-  const valido = campoValido(input);
+/** Pinta el campo y muestra u oculta su mensaje de error.
+ *  Mientras se rellena, un campo vacío no muestra mensaje (molestaría); al
+ *  enviar el formulario sí (`includeEmpty`). */
+function markField(input, includeEmpty = false) {
+  const valid = fieldIsValid(input);
+  const filled = input.value.trim() !== "";
+  const error = input.closest(".field").querySelector(".field-error");
+  const showError = !valid && (filled || includeEmpty);
 
-  input.classList.toggle("invalido", mostrarError && !valido);
-  input.classList.toggle("valido", valido && input.value.trim() !== "");
-
-  if (mostrarError && !valido && input.value.trim() !== "") {
-    fallo.textContent = t("error.invalid_" + input.dataset.regla);
-    fallo.hidden = false;
-  } else {
-    fallo.hidden = true;
-  }
-  return valido;
+  input.classList.toggle("invalid", !valid);
+  input.classList.toggle("valid", valid && filled);
+  if (showError) error.textContent = t("error.invalid_" + input.dataset.rule);
+  error.hidden = !showError;
+  return valid;
 }
 
 /** Valida el formulario entero. Devuelve true solo si todos los campos pasan. */
-function formularioValido(form) {
-  const campos = [...form.querySelectorAll("[data-regla]")];
+function formIsValid(form) {
+  const inputs = [...form.querySelectorAll("[data-rule]")];
   // Se evalúan todos para que el usuario vea de una vez qué está mal.
-  const resultados = campos.map((input) => {
-    const valido = campoValido(input);
-    const fallo = input.closest(".campo").querySelector(".fallo");
-    input.classList.toggle("invalido", !valido);
-    if (!valido) {
-      fallo.textContent = t("error.invalid_" + input.dataset.regla);
-      fallo.hidden = false;
-    } else {
-      fallo.hidden = true;
-    }
-    return valido;
-  });
-  const primerFallo = campos.find((c) => c.classList.contains("invalido"));
-  if (primerFallo) primerFallo.focus();
-  return resultados.every(Boolean);
+  const results = inputs.map((input) => markField(input, true));
+  const firstInvalid = inputs.find((input, i) => !results[i]);
+  if (firstInvalid) firstInvalid.focus();
+  return results.every(Boolean);
 }
 
 /** Conecta la validación en vivo: al escribir y al salir del campo. */
-function activarValidacion(form) {
-  form.querySelectorAll("[data-regla]").forEach((input) => {
-    input.addEventListener("blur", () => revisarCampo(input));
+function enableLiveValidation(form) {
+  form.querySelectorAll("[data-rule]").forEach((input) => {
+    input.addEventListener("blur", () => markField(input));
     input.addEventListener("input", () => {
       // Mientras se escribe solo se quita el error, no se añade: molesta menos.
-      if (input.classList.contains("invalido") && campoValido(input)) {
-        revisarCampo(input);
+      if (input.classList.contains("invalid") && fieldIsValid(input)) {
+        markField(input);
       }
     });
   });
 }
 
-function limpiarFormulario(form) {
+function resetForm(form) {
   form.reset();
-  form.querySelectorAll("[data-regla]").forEach((input) => {
-    input.classList.remove("invalido", "valido");
-    input.closest(".campo").querySelector(".fallo").hidden = true;
+  form.querySelectorAll("[data-rule]").forEach((input) => {
+    input.classList.remove("invalid", "valid");
+    input.closest(".field").querySelector(".field-error").hidden = true;
   });
 }
 
-const moneda = (valor) => t("currency", { amount: Number(valor).toFixed(2) });
+const money = (amount) => t("currency", { amount: Number(amount).toFixed(2) });
 
 // --- Pintado de las tablas -------------------------------------------------
 
-function pintarLibros(libros) {
-  if (libros.length === 0) {
-    tablaLibros.innerHTML = `<tr><td colspan="7" class="vacio">${t("empty.books")}</td></tr>`;
+function renderBooks(list) {
+  books = list;
+  if (list.length === 0) {
+    bookRows.innerHTML = `<tr><td colspan="7" class="empty">${t("empty.books")}</td></tr>`;
     return;
   }
 
-  tablaLibros.innerHTML = libros.map((libro) => {
-    const deseado = deseos.includes(libro.id);
+  bookRows.innerHTML = list.map((book) => {
+    const wished = wishlist.includes(book.id);
     return `
       <tr>
-        <td>${libro.id}</td>
-        <td>${escapar(libro.title)}</td>
-        <td>${escapar(libro.author)}</td>
-        <td>${libro.year ?? ""}</td>
-        <td class="isbn">${libro.isbn ? escapar(libro.isbn) : "—"}</td>
+        <td>${book.id}</td>
+        <td>${escapeHtml(book.title)}</td>
+        <td>${escapeHtml(book.author)}</td>
+        <td>${book.year ?? ""}</td>
+        <td class="isbn">${book.isbn ? escapeHtml(book.isbn) : "—"}</td>
         <td>
-          <span class="badge ${libro.available ? "disponible" : "prestado"}">
-            ${t(libro.available ? "status.available" : "status.borrowed")}
+          <span class="badge ${book.available ? "available" : "borrowed"}">
+            ${t(book.available ? "status.available" : "status.borrowed")}
           </span>
         </td>
-        <td class="acciones">
-          <button class="estrella ${deseado ? "activa" : ""}" data-deseo="${libro.id}"
-                  title="${t(deseado ? "action.wishlist_remove" : "action.wishlist_add")}">
-            ${deseado ? "★" : "☆"}
+        <td class="actions">
+          <button class="star ${wished ? "active" : ""}" data-action="wish" data-id="${book.id}"
+                  title="${escapeHtml(t(wished ? "action.wishlist_remove" : "action.wishlist_add"))}">
+            ${wished ? "★" : "☆"}
           </button>
-          ${libro.available ? `<button data-prestar="${libro.id}">${t("action.lend")}</button>` : ""}
-          <button class="peligro" data-eliminar="${libro.id}">${t("action.delete")}</button>
+          ${book.available ? `<button data-action="lend" data-id="${book.id}">${t("action.lend")}</button>` : ""}
+          <button class="danger" data-action="delete" data-id="${book.id}">${t("action.delete")}</button>
         </td>
       </tr>
     `;
   }).join("");
 }
 
-function pintarPrestamos(prestamos) {
-  if (prestamos.length === 0) {
-    tablaPrestamos.innerHTML = `<tr><td colspan="7" class="vacio">${t("empty.loans")}</td></tr>`;
+function renderLoans(loans) {
+  if (loans.length === 0) {
+    loanRows.innerHTML = `<tr><td colspan="7" class="empty">${t("empty.loans")}</td></tr>`;
     return;
   }
 
-  tablaPrestamos.innerHTML = prestamos.map((p) => `
-    <tr class="${p.is_active && p.days_late > 0 ? "atrasado" : ""}">
-      <td>${p.id}</td>
-      <td>${escapar(p.book_title)}</td>
-      <td>${escapar(p.borrower)}</td>
-      <td>${p.loan_date}</td>
+  loanRows.innerHTML = loans.map((loan) => `
+    <tr class="${loan.is_active && loan.days_late > 0 ? "overdue" : ""}">
+      <td>${loan.id}</td>
+      <td>${escapeHtml(loan.book_title)}</td>
+      <td>${escapeHtml(loan.borrower)}</td>
+      <td>${loan.loan_date}</td>
       <td>
-        ${p.due_date}
-        ${p.days_late > 0
-          ? `<span class="badge prestado">${p.days_late} d · ${moneda(p.fine)}</span>`
+        ${loan.due_date}
+        ${loan.days_late > 0
+          ? `<span class="badge borrowed">${loan.days_late} d · ${money(loan.fine)}</span>`
           : ""}
       </td>
-      <td>${p.return_date || "—"}</td>
-      <td class="acciones">
-        ${p.is_active ? `<button class="secundario" data-devolver="${p.id}">${t("action.return")}</button>` : ""}
+      <td>${loan.return_date || "—"}</td>
+      <td class="actions">
+        ${loan.is_active ? `<button class="secondary" data-action="return" data-id="${loan.id}">${t("action.return")}</button>` : ""}
       </td>
     </tr>
   `).join("");
@@ -186,189 +207,153 @@ function pintarPrestamos(prestamos) {
 
 // --- Paneles con estado ----------------------------------------------------
 
-function pintarActividad(datos) {
-  // Las claves del servidor ("prestamos") se traducen con "activity.prestamos".
-  const filas = Object.entries(datos.counters)
-    .map(([clave, valor]) => `
-      <li><span>${t("activity." + clave)}</span><strong>${valor}</strong></li>
+function renderActivity(activity) {
+  // Las claves del servidor ("loans") se traducen con "activity.loans".
+  const rows = Object.entries(activity.counters)
+    .map(([action, count]) => `
+      <li><span>${t("activity." + action)}</span><strong>${count}</strong></li>
     `).join("");
 
-  panelActividad.innerHTML = `
-    <ul class="contadores">
-      ${filas || `<li class="vacio">${t("activity.empty")}</li>`}
+  activityPanel.innerHTML = `
+    <ul class="counters">
+      ${rows || `<li class="empty">${t("activity.empty")}</li>`}
     </ul>
-    <p class="pie">
-      ${t("activity.total")}: <strong>${datos.total}</strong>
-      ${datos.last_action
+    <p class="footnote">
+      ${t("activity.total")}: <strong>${activity.total}</strong>
+      ${activity.last_action
         ? ` · ${t("activity.last", {
-              action: t("activity." + datos.last_action),
-              time: datos.last_action_at,
+              action: t("activity." + activity.last_action),
+              time: activity.last_action_at,
             })}`
         : ""}
     </p>
   `;
 }
 
-function pintarDeseos(datos) {
-  deseos = datos.book_ids;
+function renderWishlist(data) {
+  wishlist = data.book_ids;
 
-  panelDeseos.innerHTML = datos.books.length === 0
-    ? `<p class="vacio">${t("wishlist.empty")}</p>`
-    : `<ul class="chips">${datos.books.map((libro) =>
-        `<li>${escapar(libro.title)}</li>`).join("")}</ul>`;
+  wishlistPanel.innerHTML = data.books.length === 0
+    ? `<p class="empty">${t("wishlist.empty")}</p>`
+    : `<ul class="chips">${data.books.map((book) =>
+        `<li>${escapeHtml(book.title)}</li>`).join("")}</ul>`;
 
-  panelDeseos.innerHTML += `<p class="pie">${
-    t("wishlist.count", { count: datos.books.length, max: datos.max })
+  wishlistPanel.innerHTML += `<p class="footnote">${
+    t("wishlist.count", { count: data.books.length, max: data.max })
   }</p>`;
 }
 
 // --- Recarga general -------------------------------------------------------
 
-async function recargar() {
+async function reload() {
   // La lista de deseos se pide primero porque el catálogo necesita saber
   // qué libros están marcados para pintar la estrella.
-  const listaDeseos = await api("/api/wishlist");
-  pintarDeseos(listaDeseos);
+  renderWishlist(await api("/api/wishlist"));
 
-  const [libros, prestamos, actividad] = await Promise.all([
+  const [bookList, loans, activity] = await Promise.all([
     api("/api/books"),
     api("/api/loans"),
     api("/api/activity"),
   ]);
 
-  pintarLibros(libros);
-  pintarPrestamos(prestamos);
-  pintarActividad(actividad);
+  renderBooks(bookList);
+  renderLoans(loans);
+  renderActivity(activity);
 }
 
 // --- Acciones del usuario --------------------------------------------------
 
-const formLibro = document.getElementById("form-libro");
+bookForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  runAction(async () => {
+    // Primera barrera: los regex en el navegador. Si algo falla no se envía nada.
+    if (!formIsValid(bookForm)) return;
 
-formLibro.addEventListener("submit", async (evento) => {
-  evento.preventDefault();
-  limpiarMensaje();
-
-  // Primera barrera: los regex en el navegador. Si algo falla no se envía nada.
-  if (!formularioValido(formLibro)) return;
-
-  try {
-    await api("/api/books", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: document.getElementById("titulo").value,
-        author: document.getElementById("autor").value,
-        year: document.getElementById("anio").value,
-        isbn: document.getElementById("isbn").value,
-      }),
+    await postJson("/api/books", {
+      title: document.getElementById("book-title").value,
+      author: document.getElementById("book-author").value,
+      year: document.getElementById("book-year").value,
+      isbn: document.getElementById("book-isbn").value,
     });
-    limpiarFormulario(formLibro);
-    panelExterno.hidden = true;
-    mostrarMensaje(t("msg.book_added"), "ok");
-    await recargar();
-  } catch (error) {
-    mostrarMensaje(error.message, "error");
-  }
+    resetForm(bookForm);
+    lookupResult.hidden = true;
+    await succeed("msg.book_added");
+  });
 });
 
 // Calculadora: llama a los dos endpoints STATELESS.
-document.getElementById("form-calculo").addEventListener("submit", async (evento) => {
-  evento.preventDefault();
-  limpiarMensaje();
-  resultadoCalculo.hidden = true;
+calcForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  runAction(async () => {
+    calcResult.hidden = true;
 
-  const fecha = document.getElementById("calc-fecha").value;
-  const dias = document.getElementById("calc-dias").value;
-  const devolucion = document.getElementById("calc-devolucion").value;
+    const loanDate = document.getElementById("calc-loan-date").value;
+    const days = document.getElementById("calc-days").value;
+    const returnDate = document.getElementById("calc-return-date").value;
 
-  try {
-    const vencimiento = await api(
-      `/api/tools/due-date?loan_date=${fecha}&days=${dias}`
-    );
+    const due = await api("/api/tools/due-date?"
+      + new URLSearchParams({ loan_date: loanDate, days }));
 
     let html = t("calc.result", {
-      loan_date: vencimiento.loan_date,
-      days: vencimiento.days,
-      due_date: vencimiento.due_date,
+      loan_date: due.loan_date,
+      days: due.days,
+      due_date: due.due_date,
     });
 
-    if (devolucion) {
-      const multa = await api(
-        `/api/tools/fine?due_date=${vencimiento.due_date}&reference_date=${devolucion}`
-      );
-      html += "<br>" + (multa.days_late > 0
+    if (returnDate) {
+      const penalty = await api("/api/tools/fine?"
+        + new URLSearchParams({ due_date: due.due_date, reference_date: returnDate }));
+      html += "<br>" + (penalty.days_late > 0
         ? t("calc.late", {
-            date: devolucion,
-            days: multa.days_late,
-            fine: moneda(multa.fine),
-            rate: moneda(multa.daily_rate),
+            date: returnDate,
+            days: penalty.days_late,
+            fine: money(penalty.fine),
+            rate: money(penalty.daily_rate),
           })
-        : t("calc.ontime", { date: devolucion }));
+        : t("calc.ontime", { date: returnDate }));
     }
 
-    resultadoCalculo.innerHTML = html;
-    resultadoCalculo.hidden = false;
-  } catch (error) {
-    mostrarMensaje(error.message, "error");
-  }
+    calcResult.innerHTML = html;
+    calcResult.hidden = false;
+  });
 });
 
-document.getElementById("btn-reset-actividad").addEventListener("click", async () => {
-  limpiarMensaje();
-  try {
-    await api("/api/activity/reset", { method: "POST" });
-    mostrarMensaje(t("msg.activity_reset"), "ok");
-    await recargar();
-  } catch (error) {
-    mostrarMensaje(error.message, "error");
-  }
-});
+document.getElementById("activity-reset").addEventListener("click", () => runAction(async () => {
+  await api("/api/activity/reset", { method: "POST" });
+  await succeed("msg.activity_reset");
+}));
 
-document.getElementById("btn-vaciar-deseos").addEventListener("click", async () => {
-  limpiarMensaje();
-  try {
-    await api("/api/wishlist", { method: "DELETE" });
-    mostrarMensaje(t("msg.wishlist_cleared"), "ok");
-    await recargar();
-  } catch (error) {
-    mostrarMensaje(error.message, "error");
-  }
-});
+document.getElementById("wishlist-clear").addEventListener("click", () => runAction(async () => {
+  await api("/api/wishlist", { method: "DELETE" });
+  await succeed("msg.wishlist_cleared");
+}));
 
-document.addEventListener("click", async (evento) => {
-  const boton = evento.target.closest("button");
-  if (!boton) return;
+// Botones de las tablas. Se pintan de nuevo en cada recarga, así que se
+// escucha en el documento y cada botón dice qué hace con `data-action`.
+const ROW_ACTIONS = {
+  async wish(bookId) {
+    const result = await api(`/api/wishlist/${bookId}`, { method: "POST" });
+    await succeed(result.in_wishlist ? "msg.wishlist_added" : "msg.wishlist_removed");
+  },
+  lend(bookId) {
+    openLoanForm(bookId);  // el préstamo se registra al enviar el formulario
+  },
+  async return(loanId) {
+    await api(`/api/loans/${loanId}/return`, { method: "POST" });
+    await succeed("msg.book_returned");
+  },
+  async delete(bookId) {
+    if (!confirm(t("confirm.delete"))) return;
+    await api(`/api/books/${bookId}`, { method: "DELETE" });
+    await succeed("msg.book_deleted");
+  },
+};
 
-  const { prestar, eliminar, devolver, deseo } = boton.dataset;
-  if (!prestar && !eliminar && !devolver && !deseo) return;
-
-  limpiarMensaje();
-
-  try {
-    if (deseo) {
-      const resultado = await api(`/api/wishlist/${deseo}`, { method: "POST" });
-      mostrarMensaje(
-        resultado.in_wishlist
-          ? t("msg.wishlist_added")
-          : t("msg.wishlist_removed"),
-        "ok"
-      );
-    } else if (prestar) {
-      abrirFormularioPrestamo(Number(prestar), boton);
-      return;                       // el préstamo se registra al enviar el formulario
-    } else if (devolver) {
-      await api(`/api/loans/${devolver}/return`, { method: "POST" });
-      mostrarMensaje(t("msg.book_returned"), "ok");
-    } else {
-      if (!confirm(t("confirm.delete"))) return;
-      await api(`/api/books/${eliminar}`, { method: "DELETE" });
-      mostrarMensaje(t("msg.book_deleted"), "ok");
-    }
-    await recargar();
-  } catch (error) {
-    mostrarMensaje(error.message, "error");
-  }
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+  const action = ROW_ACTIONS[button.dataset.action];
+  runAction(() => action(Number(button.dataset.id)));
 });
 
 
@@ -384,89 +369,93 @@ document.addEventListener("click", async (evento) => {
 //
 //  Al ser un servicio ajeno hay que contar con que falle: se le pone un plazo
 //  máximo de respuesta y se tratan por separado «no encontrado», «tardó
-//  demasiado» y «no se pudo conectar».
+//  demasiado» y «no se pudo conectar». Y lo que devuelve se escapa igual que
+//  lo nuestro: un servicio externo tampoco es de fiar.
 // ===========================================================================
 
 const OPEN_LIBRARY = "https://openlibrary.org/search.json";
-const PLAZO_EXTERNO = 8000; // ms antes de darlo por perdido
+const LOOKUP_TIMEOUT = 8000; // ms antes de darlo por perdido
 
-const panelExterno = document.getElementById("resultado-externo");
-
-function mostrarExterno(html, tipo) {
-  panelExterno.className = "externo " + tipo;
-  panelExterno.innerHTML = html;
-  panelExterno.hidden = false;
+function showLookup(html, kind) {
+  lookupResult.className = "lookup-result " + kind;
+  lookupResult.innerHTML = html;
+  lookupResult.hidden = false;
 }
 
 /** Consulta un ISBN en Open Library. Devuelve los datos del libro o null. */
-async function buscarEnOpenLibrary(isbn) {
+async function searchOpenLibrary(isbn) {
   // AbortController corta la petición si el servicio externo no responde.
-  const corte = new AbortController();
-  const temporizador = setTimeout(() => corte.abort(), PLAZO_EXTERNO);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LOOKUP_TIMEOUT);
 
   const url = `${OPEN_LIBRARY}?q=isbn:${encodeURIComponent(isbn)}&limit=1`
             + `&fields=title,author_name,first_publish_year,cover_i`;
 
   try {
-    const respuesta = await fetch(url, { signal: corte.signal });
-    if (!respuesta.ok) throw new Error("HTTP " + respuesta.status);
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error("HTTP " + response.status);
 
-    const datos = await respuesta.json();
-    return datos.docs && datos.docs.length ? datos.docs[0] : null;
+    const data = await response.json();
+    return data.docs && data.docs.length ? data.docs[0] : null;
   } finally {
-    clearTimeout(temporizador);
+    clearTimeout(timer);
   }
 }
 
-document.getElementById("btn-buscar-isbn").addEventListener("click", async () => {
-  limpiarMensaje();
-  const campoIsbn = document.getElementById("isbn");
+/** Pasa al formulario lo que devolvió Open Library y lo revalida. */
+function fillBookForm(found) {
+  const fields = {
+    "book-title": found.title || "",
+    "book-author": (found.author_name && found.author_name[0]) || "",
+    "book-year": found.first_publish_year || "",
+  };
+  for (const [id, value] of Object.entries(fields)) {
+    const input = document.getElementById(id);
+    input.value = value;
+    // Lo que llega de fuera tampoco se da por bueno sin comprobarlo.
+    markField(input);
+  }
+}
+
+document.getElementById("isbn-lookup").addEventListener("click", async () => {
+  clearNotice();
+  const isbnInput = document.getElementById("book-isbn");
 
   // Se reutiliza el mismo regex del servidor antes de molestar al tercero.
-  if (!revisarCampo(campoIsbn)) {
-    panelExterno.hidden = true;  // que no quede a la vista un resultado viejo
+  if (!markField(isbnInput)) {
+    lookupResult.hidden = true;  // que no quede a la vista un resultado viejo
     return;
   }
 
-  const isbn = campoIsbn.value.trim().replace(/[-\s]/g, "");
-  mostrarExterno(`<p class="buscando">${t("ext.searching")}</p>`, "neutro");
+  const isbn = isbnInput.value.trim().replace(/[-\s]/g, "");
+  showLookup(`<p class="searching">${t("ext.searching")}</p>`, "neutral");
 
   try {
-    const libro = await buscarEnOpenLibrary(isbn);
+    const found = await searchOpenLibrary(isbn);
 
-    if (!libro) {
-      mostrarExterno(`<p>${t("ext.not_found")}</p>`, "aviso");
+    if (!found) {
+      showLookup(`<p>${t("ext.not_found")}</p>`, "warning");
       return;
     }
 
-    // Se rellena el formulario con lo que devolvió el servicio externo.
-    document.getElementById("titulo").value = libro.title || "";
-    document.getElementById("autor").value =
-      (libro.author_name && libro.author_name[0]) || "";
-    document.getElementById("anio").value = libro.first_publish_year || "";
+    fillBookForm(found);
 
-    // Los campos rellenados se revalidan: lo que llega de fuera tampoco se
-    // da por bueno sin comprobarlo.
-    ["titulo", "autor", "anio"].forEach((id) =>
-      revisarCampo(document.getElementById(id))
-    );
+    const cover = found.cover_i
+      ? `<img src="https://covers.openlibrary.org/b/id/${encodeURIComponent(found.cover_i)}-M.jpg"
+              alt="${escapeHtml(found.title)}" class="cover">`
+      : `<div class="cover missing">${t("ext.no_cover")}</div>`;
 
-    const portada = libro.cover_i
-      ? `<img src="https://covers.openlibrary.org/b/id/${libro.cover_i}-M.jpg"
-              alt="${escapar(libro.title)}" class="portada">`
-      : `<div class="portada vacia">${t("ext.no_cover")}</div>`;
-
-    mostrarExterno(`
-      ${portada}
+    showLookup(`
+      ${cover}
       <div>
-        <p><strong>${t("ext.found", { title: escapar(libro.title) })}</strong></p>
+        <p><strong>${t("ext.found", { title: escapeHtml(found.title) })}</strong></p>
         <p>${t("ext.filled")}</p>
-        <p class="fuente">${t("ext.source")}</p>
+        <p class="source">${t("ext.source")}</p>
       </div>
     `, "ok");
   } catch (error) {
-    const clave = error.name === "AbortError" ? "ext.timeout" : "ext.error";
-    mostrarExterno(`<p>${t(clave)}</p>`, "error");
+    const key = error.name === "AbortError" ? "ext.timeout" : "ext.error";
+    showLookup(`<p>${t(key)}</p>`, "error");
   }
 });
 
@@ -484,294 +473,322 @@ document.getElementById("btn-buscar-isbn").addEventListener("click", async () =>
 //  sessionStorage para no tener que teclearla otra vez al recargar.
 // ===========================================================================
 
-const CLAVE_IDENTIDAD = "chat-identidad";
+const IDENTITY_KEY = "chat-identity";
 
-const formChatEntrar = document.getElementById("form-chat-entrar");
-const formChatEnviar = document.getElementById("form-chat-enviar");
-const salaChat = document.getElementById("chat-sala");
-const listaMensajes = document.getElementById("chat-mensajes");
-const estadoChat = document.getElementById("chat-estado");
-const falloChat = document.getElementById("chat-fallo");
+const chatJoinForm = document.getElementById("chat-join-form");
+const chatSendForm = document.getElementById("chat-send-form");
+const chatRoom = document.getElementById("chat-room");
+const chatMessages = document.getElementById("chat-messages");
+const chatStatus = document.getElementById("chat-status");
+const chatError = document.getElementById("chat-error");
+const chatText = document.getElementById("chat-text");
+const chatMe = document.getElementById("chat-me");
 
 let socket = null;
-let identidad = null;
-let reconexion = null;
+let identity = null;
+let reconnectTimer = null;
 
-function guardarIdentidad(datos) {
+// sessionStorage puede lanzar una excepción (modo privado, almacenamiento
+// bloqueado). Sin él, el chat funciona igual: solo deja de recordar quién eres
+// al recargar. Por eso estos tres `catch` no necesitan hacer nada más.
+function saveIdentity(data) {
   try {
-    sessionStorage.setItem(CLAVE_IDENTIDAD, JSON.stringify(datos));
-  } catch (e) { /* modo privado: se sigue sin recordar */ }
+    sessionStorage.setItem(IDENTITY_KEY, JSON.stringify(data));
+  } catch {
+    // Sin almacenamiento: la identidad dura lo que dure la página.
+  }
 }
 
-function leerIdentidad() {
+function loadIdentity() {
   try {
-    return JSON.parse(sessionStorage.getItem(CLAVE_IDENTIDAD) || "null");
-  } catch (e) { return null; }
+    return JSON.parse(sessionStorage.getItem(IDENTITY_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function forgetIdentity() {
+  try {
+    sessionStorage.removeItem(IDENTITY_KEY);
+  } catch {
+    // Si no se pudo guardar, tampoco hay nada que borrar.
+  }
 }
 
 /** ¿Está la conexión realmente abierta? */
-function chatConectado() {
-  return socket && socket.readyState === WebSocket.OPEN;
+function isConnected() {
+  return socket !== null && socket.readyState === WebSocket.OPEN;
+}
+
+function showChatError(text) {
+  chatError.textContent = text;
+  chatError.hidden = false;
 }
 
 /** Envía por el socket solo si está abierto; si no, avisa y no revienta. */
-function enviarPorSocket(objeto) {
-  if (!chatConectado()) {
-    falloChat.textContent = t("chat.disconnected");
-    falloChat.hidden = false;
+function sendOverSocket(payload) {
+  if (!isConnected()) {
+    showChatError(t("chat.disconnected"));
     return false;
   }
-  socket.send(JSON.stringify(objeto));
+  socket.send(JSON.stringify(payload));
   return true;
 }
 
+function sendJoin(nickname, email) {
+  return sendOverSocket({ type: "join", name: nickname, email });
+}
+
 /** Bloquea los controles mientras no haya conexión. */
-function habilitarControles(activo) {
-  document.getElementById("chat-texto").disabled = !activo;
-  formChatEnviar.querySelector("button").disabled = !activo;
-  formChatEntrar.querySelector("button").disabled = !activo;
+function setControlsEnabled(enabled) {
+  chatText.disabled = !enabled;
+  chatSendForm.querySelector("button").disabled = !enabled;
+  chatJoinForm.querySelector("button").disabled = !enabled;
 }
 
-function pintarEstado(clave, clase) {
-  estadoChat.textContent = t(clave);
-  estadoChat.className = "estado-conexion " + clase;
+function renderStatus(key, kind) {
+  chatStatus.textContent = t(key);
+  chatStatus.className = "connection-status " + kind;
 }
 
-function anadirLinea(nodo) {
-  const vacio = listaMensajes.querySelector(".vacio");
-  if (vacio) vacio.remove();
-  listaMensajes.appendChild(nodo);
-  listaMensajes.scrollTop = listaMensajes.scrollHeight;
+function appendLine(node) {
+  const placeholder = chatMessages.querySelector(".empty");
+  if (placeholder) placeholder.remove();
+  chatMessages.appendChild(node);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-function pintarMensaje(m) {
-  const mio = identidad && m.email === identidad.email;
-  const li = document.createElement("li");
-  li.className = "chat-mensaje" + (mio ? " mio" : "");
-  li.innerHTML = `
-    <span class="avatar" style="background:${escapar(m.color)}">${escapar(m.initial)}</span>
-    <div class="burbuja">
-      <p class="autor">${escapar(m.nickname)}${mio ? ` (${t("chat.you")})` : ""}
-         <span class="hora">${escapar(m.at)}</span></p>
-      <p class="texto">${escapar(m.text)}</p>
+function renderChatMessage(message) {
+  const own = identity && message.email === identity.email;
+  const item = document.createElement("li");
+  item.className = "chat-message" + (own ? " own" : "");
+  item.innerHTML = `
+    <span class="avatar" style="background:${escapeHtml(message.color)}">${escapeHtml(message.initial)}</span>
+    <div class="bubble">
+      <p class="author">${escapeHtml(message.nickname)}${own ? ` (${t("chat.you")})` : ""}
+         <span class="time">${escapeHtml(message.at)}</span></p>
+      <p class="text">${escapeHtml(message.text)}</p>
     </div>`;
-  anadirLinea(li);
+  appendLine(item);
 }
 
-function pintarAviso(texto) {
-  const li = document.createElement("li");
-  li.className = "chat-aviso";
-  li.textContent = texto;
-  anadirLinea(li);
+function renderChatNotice(text) {
+  const item = document.createElement("li");
+  item.className = "chat-notice";
+  item.textContent = text;
+  appendLine(item);
 }
 
-function conectar() {
-  const protocolo = location.protocol === "https:" ? "wss:" : "ws:";
-  const idioma = document.documentElement.lang || "es";
-  socket = new WebSocket(`${protocolo}//${location.host}/ws/chat?lang=${idioma}`);
+function renderOnline(count) {
+  document.getElementById("chat-online").textContent = t("chat.online", { count });
+}
 
-  socket.addEventListener("open", () => {
-    pintarEstado("chat.connected", "ok");
-    habilitarControles(true);
-    falloChat.hidden = true;
+function enterRoom() {
+  chatJoinForm.hidden = true;
+  chatRoom.hidden = false;
+  chatMe.textContent = identity.nickname;
+  chatMe.style.background = identity.color;
+  chatText.focus();
+}
+
+// Un manejador por cada tipo de mensaje que envía el servidor.
+const SOCKET_HANDLERS = {
+  welcome(data) {
+    chatMessages.innerHTML = data.history.length
+      ? "" : `<li class="empty">${t("chat.empty")}</li>`;
+    data.history.forEach(renderChatMessage);
+    renderOnline(data.online);
+  },
+  joined(data) {
+    identity = data.identity;
+    saveIdentity(identity);
+    enterRoom();
+  },
+  message(data) {
+    renderChatMessage(data.message);
+  },
+  system(data) {
+    renderChatNotice(t(data.event === "join" ? "chat.joined" : "chat.left",
+                       { nickname: data.nickname }));
+  },
+  online(data) {
+    renderOnline(data.count);
+  },
+  error(data) {
+    showChatError(data.error);
+  },
+};
+
+function scheduleReconnect(delay) {
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(connect, delay);
+}
+
+function connect() {
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  const lang = document.documentElement.lang || "es";
+  // `ws` es ESTA conexión; `socket`, la vigente. Al salir del chat se
+  // sustituye una por otra y la vieja no debe reconectarse por su cuenta.
+  const ws = new WebSocket(`${protocol}//${location.host}/ws/chat?lang=${lang}`);
+  socket = ws;
+
+  ws.addEventListener("open", () => {
+    renderStatus("chat.connected", "ok");
+    setControlsEnabled(true);
+    chatError.hidden = true;
     // Si ya había identidad guardada, se reenvía sin preguntar de nuevo.
-    if (identidad) {
-      socket.send(JSON.stringify({
-        type: "join", name: identidad.nickname, email: identidad.email,
-      }));
-    }
+    if (identity) sendJoin(identity.nickname, identity.email);
   });
 
-  socket.addEventListener("message", (evento) => {
-    const datos = JSON.parse(evento.data);
-
-    if (datos.type === "welcome") {
-      listaMensajes.innerHTML = datos.history.length
-        ? "" : `<li class="vacio">${t("chat.empty")}</li>`;
-      datos.history.forEach(pintarMensaje);
-      pintarConectados(datos.online);
-
-    } else if (datos.type === "joined") {
-      identidad = datos.identity;
-      guardarIdentidad(identidad);
-      entrarEnSala();
-
-    } else if (datos.type === "message") {
-      pintarMensaje(datos.message);
-
-    } else if (datos.type === "system") {
-      pintarAviso(t(datos.event === "join" ? "chat.joined" : "chat.left",
-                    { nickname: datos.nickname }));
-
-    } else if (datos.type === "online") {
-      pintarConectados(datos.count);
-
-    } else if (datos.type === "error") {
-      falloChat.textContent = datos.error;
-      falloChat.hidden = false;
-    }
+  ws.addEventListener("message", (event) => {
+    const data = JSON.parse(event.data);
+    SOCKET_HANDLERS[data.type]?.(data);
   });
 
-  socket.addEventListener("close", () => {
-    pintarEstado("chat.disconnected", "error");
-    habilitarControles(false);
+  ws.addEventListener("close", () => {
+    if (ws !== socket) return;
+    renderStatus("chat.disconnected", "error");
+    setControlsEnabled(false);
     // Reconexión sencilla: si el servidor se reinicia, el chat vuelve solo.
-    clearTimeout(reconexion);
-    reconexion = setTimeout(conectar, 2000);
+    scheduleReconnect(2000);
   });
 
-  socket.addEventListener("error", () => socket.close());
+  ws.addEventListener("error", () => ws.close());
 }
 
-function pintarConectados(n) {
-  document.getElementById("chat-conectados").textContent =
-    t("chat.online", { count: n });
-}
+chatJoinForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  chatError.hidden = true;
+  if (!formIsValid(chatJoinForm)) return;
 
-function entrarEnSala() {
-  formChatEntrar.hidden = true;
-  salaChat.hidden = false;
-  document.getElementById("chat-yo").textContent = identidad.nickname;
-  document.getElementById("chat-yo").style.background = identidad.color;
-  document.getElementById("chat-texto").focus();
-}
-
-formChatEntrar.addEventListener("submit", (evento) => {
-  evento.preventDefault();
-  falloChat.hidden = true;
-  if (!formularioValido(formChatEntrar)) return;
-
-  enviarPorSocket({
-    type: "join",
-    name: document.getElementById("chat-apodo").value,
-    email: document.getElementById("chat-correo").value,
-  });
+  sendJoin(
+    document.getElementById("chat-nickname").value,
+    document.getElementById("chat-email").value,
+  );
 });
 
-formChatEnviar.addEventListener("submit", (evento) => {
-  evento.preventDefault();
-  falloChat.hidden = true;
+chatSendForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  chatError.hidden = true;
 
-  const campo = document.getElementById("chat-texto");
-  if (!campo.value.trim()) return;
+  if (!chatText.value.trim()) return;
 
-  if (enviarPorSocket({ type: "message", text: campo.value })) {
-    campo.value = "";
+  if (sendOverSocket({ type: "message", text: chatText.value })) {
+    chatText.value = "";
   }
 });
 
-document.getElementById("btn-chat-salir").addEventListener("click", () => {
-  try { sessionStorage.removeItem(CLAVE_IDENTIDAD); } catch (e) {}
-  identidad = null;
-  salaChat.hidden = true;
-  formChatEntrar.hidden = false;
-  limpiarFormulario(formChatEntrar);
+document.getElementById("chat-leave").addEventListener("click", () => {
+  forgetIdentity();
+  identity = null;
+  chatRoom.hidden = true;
+  chatJoinForm.hidden = false;
+  resetForm(chatJoinForm);
+
   // Cerrar y reabrir hace que el servidor avise de la salida a los demás.
-  clearTimeout(reconexion);
-  socket.close();
-  setTimeout(conectar, 100);
+  // Se suelta antes la conexión vieja para que su `close` no abra otra más.
+  const previous = socket;
+  socket = null;
+  previous?.close();
+  renderStatus("chat.connecting", "");
+  setControlsEnabled(false);
+  scheduleReconnect(100);
 });
 
-function iniciarChat() {
-  identidad = leerIdentidad();
-  activarValidacion(formChatEntrar);
-  if (identidad) entrarEnSala();
-  pintarEstado("chat.connecting", "");
-  habilitarControles(false);
-  conectar();
+function startChat() {
+  identity = loadIdentity();
+  enableLiveValidation(chatJoinForm);
+  if (identity) enterRoom();
+  renderStatus("chat.connecting", "");
+  setControlsEnabled(false);
+  connect();
 }
 
 // --- Formulario de préstamo -----------------------------------------------
 
-const capaPrestamo = document.getElementById("capa-prestamo");
-const formPrestamo = document.getElementById("form-prestamo");
-let libroAPrestar = null;
+const loanOverlay = document.getElementById("loan-overlay");
+const loanForm = document.getElementById("loan-form");
+let bookToLend = null;
 
-function abrirFormularioPrestamo(bookId, boton) {
-  libroAPrestar = bookId;
-  const fila = boton.closest("tr");
-  const titulo = fila.children[1].textContent.trim();
+function openLoanForm(bookId) {
+  bookToLend = bookId;
+  const book = books.find((candidate) => candidate.id === bookId);
 
-  document.getElementById("prestamo-libro").textContent =
-    t("loanform.book") + ": " + titulo;
+  document.getElementById("loan-book").textContent =
+    t("loanform.book") + ": " + book.title;
 
-  limpiarFormulario(formPrestamo);
-  capaPrestamo.hidden = false;
-  document.getElementById("p-nombre").focus();
+  resetForm(loanForm);
+  loanOverlay.hidden = false;
+  document.getElementById("loan-borrower").focus();
 }
 
-function cerrarFormularioPrestamo() {
-  capaPrestamo.hidden = true;
-  libroAPrestar = null;
+function closeLoanForm() {
+  loanOverlay.hidden = true;
+  bookToLend = null;
 }
 
-document.getElementById("btn-cancelar-prestamo")
-  .addEventListener("click", cerrarFormularioPrestamo);
+document.getElementById("loan-cancel").addEventListener("click", closeLoanForm);
 
 // Cerrar pulsando fuera del cuadro o con la tecla Escape.
-capaPrestamo.addEventListener("click", (e) => {
-  if (e.target === capaPrestamo) cerrarFormularioPrestamo();
+loanOverlay.addEventListener("click", (event) => {
+  if (event.target === loanOverlay) closeLoanForm();
 });
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !capaPrestamo.hidden) cerrarFormularioPrestamo();
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !loanOverlay.hidden) closeLoanForm();
 });
 
-formPrestamo.addEventListener("submit", async (evento) => {
-  evento.preventDefault();
-  limpiarMensaje();
+loanForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  // Si el servidor rechaza algo que el navegador dio por bueno, runAction lo
+  // muestra en el aviso.
+  runAction(async () => {
+    if (!formIsValid(loanForm)) return;
 
-  if (!formularioValido(formPrestamo)) return;
-
-  try {
-    await api("/api/loans", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        book_id: libroAPrestar,
-        borrower: document.getElementById("p-nombre").value,
-        dni: document.getElementById("p-dni").value,
-        email: document.getElementById("p-email").value,
-        phone: document.getElementById("p-telefono").value,
-      }),
+    await postJson("/api/loans", {
+      book_id: bookToLend,
+      borrower: document.getElementById("loan-borrower").value,
+      dni: document.getElementById("loan-dni").value,
+      email: document.getElementById("loan-email").value,
+      phone: document.getElementById("loan-phone").value,
     });
-    cerrarFormularioPrestamo();
-    mostrarMensaje(t("msg.loan_created"), "ok");
-    await recargar();
-  } catch (error) {
-    // Si el servidor rechaza algo que el navegador dio por bueno, se ve aquí.
-    mostrarMensaje(error.message, "error");
-  }
+    closeLoanForm();
+    await succeed("msg.loan_created");
+  });
 });
 
 // Cambiar de idioma: el servidor lo guarda en la sesión y se recarga la página
 // para que también los textos fijos (los que pinta Jinja) vengan traducidos.
-document.getElementById("selector-idioma").addEventListener("change", async (evento) => {
-  await api(`/api/i18n/${evento.target.value}`, { method: "POST" });
-  // Se navega SIN ?lang= en la URL: si se recargara tal cual, ese parámetro
-  // volvería a imponer el idioma anterior y anularía el cambio recién hecho.
-  window.location.href = window.location.pathname;
+document.getElementById("language-select").addEventListener("change", (event) => {
+  runAction(async () => {
+    await api(`/api/i18n/${event.target.value}`, { method: "POST" });
+    // Se navega SIN ?lang= en la URL: si se recargara tal cual, ese parámetro
+    // volvería a imponer el idioma anterior y anularía el cambio recién hecho.
+    window.location.href = window.location.pathname;
+  });
 });
 
 // Al abrir la página, la calculadora se rellena con la fecha de hoy.
-document.getElementById("calc-fecha").value = new Date().toISOString().slice(0, 10);
+document.getElementById("calc-loan-date").value = new Date().toISOString().slice(0, 10);
 
 /** Arranque: primero el catálogo de traducciones, después los datos. */
-async function iniciar() {
+async function start() {
   // El catálogo de idioma y los patrones de validación, antes de pintar nada.
-  const [i18n, validacion] = await Promise.all([
+  const [i18n, validation] = await Promise.all([
     api("/api/i18n"),
     api("/api/validation-rules"),
   ]);
 
-  mensajes = i18n.messages;
-  reglas = validacion.patterns;
+  messages = i18n.messages;
+  rules = validation.patterns;
   document.documentElement.lang = i18n.lang;
 
-  activarValidacion(formLibro);
-  activarValidacion(formPrestamo);
+  enableLiveValidation(bookForm);
+  enableLiveValidation(loanForm);
 
-  await recargar();
-  iniciarChat();
+  await reload();
+  startChat();
 }
 
-iniciar();
+// Si el arranque falla (servidor caído, respuesta inesperada), se avisa en la
+// página en vez de dejar el error escondido en la consola.
+runAction(start);
