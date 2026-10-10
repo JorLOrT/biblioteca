@@ -10,20 +10,29 @@ para practicar la arquitectura en capas.
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+export SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
 .venv/bin/python app.py
 ```
 
 Abrir **http://127.0.0.1:5001** — la primera vez se crea `library.db` con 6 libros de ejemplo.
 
+La `SECRET_KEY` firma la cookie de sesión. No hay una por defecto escrita en el código: si
+falta, la aplicación se niega a arrancar.
+
 Con Docker:
 
 ```bash
 docker build -t biblioteca .
-docker run -p 5001:5001 biblioteca
+docker run -p 5001:5001 -e SECRET_KEY="$SECRET_KEY" biblioteca
 ```
 
-> Uso el puerto 5001 porque en macOS el 5000 lo ocupa AirPlay Receiver.
-> Se puede cambiar con `PORT=8080` y la base de datos con `LIBRARY_DB=/ruta/otra.db`.
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `SECRET_KEY` | — (obligatoria) | Firmar la cookie de sesión |
+| `HOST` | `127.0.0.1` | Interfaz donde escucha. El Dockerfile pone `0.0.0.0` |
+| `PORT` | `5001` | En macOS el 5000 lo ocupa AirPlay Receiver |
+| `FLASK_DEBUG` | apagado | Con `1`, recarga automática y depurador. Nunca en producción |
+| `LIBRARY_DB` | `library.db` | Otra base de datos, por ejemplo para pruebas |
 
 ---
 
@@ -56,9 +65,9 @@ entities/  Book y Loan: el modelo que comparten las tres capas.
 las tres búsquedas salen vacías:
 
 ```bash
-grep -rn "sqlite3\|Repository" presentation/   # la presentación no toca la BD
-grep -rn "flask\|session"      business/       # el negocio no conoce la web
-grep -rn "business"            data_access/    # los datos no conocen el negocio
+grep -rnE "^(from|import) (sqlite3|data_access)" presentation/       # la presentación no toca la BD
+grep -rnE "^(from|import) (flask|presentation)" business/            # el negocio no conoce la web
+grep -rnE "^(from|import) (business|presentation)" data_access/      # los datos no conocen el negocio
 ```
 
 ### Recorrido de una petición
@@ -70,11 +79,13 @@ Al pulsar **Prestar**:
 | Navegador | `POST /api/loans` con los datos del prestatario |
 | Presentación | `loan_controller` lee el JSON y llama al servicio |
 | Negocio | `LoanService` valida y comprueba que el libro **esté disponible** |
-| Acceso a datos | `INSERT INTO loans` + `UPDATE books SET available = 0` |
+| Acceso a datos | `INSERT INTO loans` + `UPDATE books SET available = 0`, en **una** transacción |
 | Presentación | Devuelve el préstamo como JSON con un `201` |
 
 Si el libro ya estaba prestado, el negocio lanza un `BusinessError`, no se escribe nada y
-`error_handlers` lo convierte en un `400` traducido al idioma del usuario.
+`error_handlers` lo convierte en un `400` traducido al idioma del usuario. Si la segunda
+escritura fallara, la transacción deshace también la primera: nunca queda un préstamo de un
+libro que figura como disponible.
 
 ---
 
@@ -83,6 +94,7 @@ Si el libro ya estaba prestado, el negocio lanza un `BusinessError`, no se escri
 | Tema | Dónde | En una línea |
 |---|---|---|
 | **Reglas de negocio** | `business/book_service.py`<br>`business/loan_service.py` | Un libro solo se presta si está disponible; no se elimina un libro prestado; un préstamo no se devuelve dos veces |
+| **Transacciones** | `data_access/unit_of_work.py` | Prestar, devolver y eliminar escriben en dos tablas: o se guardan las dos escrituras o ninguna |
 | **Funciones sin estado** | `business/library_calculator.py` | `calculate_due_date` y `calculate_fine`: puras, misma entrada → misma salida |
 | **Funciones con estado** | `business/activity_service.py`<br>`business/wishlist_service.py` | Contadores en la RAM del servidor y lista de deseos en la sesión del usuario |
 | **Internacionalización** | `presentation/i18n/` | Español e inglés con menú desplegable. El negocio lanza claves de error; la presentación las traduce |
@@ -133,12 +145,14 @@ Aparte de esta API, el navegador abre dos conexiones que no siguen el ciclo peti
 App-N-Capas/
 ├── app.py                      # Ensambla las capas y arranca Flask
 ├── requirements.txt · Dockerfile
+├── pyproject.toml · requirements-dev.txt · stubs/   # Revisión del código (ruff y mypy)
 │
 ├── entities/                   # ENTIDADES
 │   └── book.py · loan.py
 │
 ├── data_access/                # ACCESO A DATOS
 │   ├── database.py             #   Conexión, esquema, migraciones y datos de ejemplo
+│   ├── unit_of_work.py         #   Una transacción para todo un caso de uso
 │   └── book_repository.py · loan_repository.py
 │
 ├── business/                   # NEGOCIO
@@ -154,7 +168,21 @@ App-N-Capas/
     ├── i18n/                   #   es.json · en.json · translate()
     ├── *_controller.py         #   books · loans · tools · activity · wishlist · i18n · validation
     ├── chat_socket.py          #   WebSocket /ws/chat
+    ├── json_input.py           #   Lee el JSON del cliente sin fiarse de su forma
     ├── error_handlers.py       #   Clave de error → HTTP + idioma
     ├── templates/index.html
     └── static/app.js · styles.css
 ```
+
+---
+
+## Revisar el código
+
+```bash
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/ruff check .   # estilo PEP 8, nombres, código muerto, complejidad y seguridad
+.venv/bin/mypy           # tipos, en modo estricto
+```
+
+Las reglas están en `pyproject.toml`. `flask-sock` no publica sus tipos, así que `stubs/`
+declara solo la parte que usa la aplicación.
