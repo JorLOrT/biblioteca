@@ -470,6 +470,217 @@ document.getElementById("btn-buscar-isbn").addEventListener("click", async () =>
   }
 });
 
+
+// ===========================================================================
+//  CHAT POR WEBSOCKET
+//
+//  El resto de la aplicación usa fetch: el navegador pregunta y el servidor
+//  contesta. Aquí la conexión se queda ABIERTA en los dos sentidos, así que el
+//  servidor puede mandar un mensaje sin que nadie se lo haya pedido. Por eso
+//  lo que escribe otra persona aparece al instante, sin recargar ni preguntar
+//  cada pocos segundos.
+//
+//  No hay registro: la identidad es un apodo y un correo, y se guarda en
+//  sessionStorage para no tener que teclearla otra vez al recargar.
+// ===========================================================================
+
+const CLAVE_IDENTIDAD = "chat-identidad";
+
+const formChatEntrar = document.getElementById("form-chat-entrar");
+const formChatEnviar = document.getElementById("form-chat-enviar");
+const salaChat = document.getElementById("chat-sala");
+const listaMensajes = document.getElementById("chat-mensajes");
+const estadoChat = document.getElementById("chat-estado");
+const falloChat = document.getElementById("chat-fallo");
+
+let socket = null;
+let identidad = null;
+let reconexion = null;
+
+function guardarIdentidad(datos) {
+  try {
+    sessionStorage.setItem(CLAVE_IDENTIDAD, JSON.stringify(datos));
+  } catch (e) { /* modo privado: se sigue sin recordar */ }
+}
+
+function leerIdentidad() {
+  try {
+    return JSON.parse(sessionStorage.getItem(CLAVE_IDENTIDAD) || "null");
+  } catch (e) { return null; }
+}
+
+/** ¿Está la conexión realmente abierta? */
+function chatConectado() {
+  return socket && socket.readyState === WebSocket.OPEN;
+}
+
+/** Envía por el socket solo si está abierto; si no, avisa y no revienta. */
+function enviarPorSocket(objeto) {
+  if (!chatConectado()) {
+    falloChat.textContent = t("chat.disconnected");
+    falloChat.hidden = false;
+    return false;
+  }
+  socket.send(JSON.stringify(objeto));
+  return true;
+}
+
+/** Bloquea los controles mientras no haya conexión. */
+function habilitarControles(activo) {
+  document.getElementById("chat-texto").disabled = !activo;
+  formChatEnviar.querySelector("button").disabled = !activo;
+  formChatEntrar.querySelector("button").disabled = !activo;
+}
+
+function pintarEstado(clave, clase) {
+  estadoChat.textContent = t(clave);
+  estadoChat.className = "estado-conexion " + clase;
+}
+
+function anadirLinea(nodo) {
+  const vacio = listaMensajes.querySelector(".vacio");
+  if (vacio) vacio.remove();
+  listaMensajes.appendChild(nodo);
+  listaMensajes.scrollTop = listaMensajes.scrollHeight;
+}
+
+function pintarMensaje(m) {
+  const mio = identidad && m.email === identidad.email;
+  const li = document.createElement("li");
+  li.className = "chat-mensaje" + (mio ? " mio" : "");
+  li.innerHTML = `
+    <span class="avatar" style="background:${escapar(m.color)}">${escapar(m.initial)}</span>
+    <div class="burbuja">
+      <p class="autor">${escapar(m.nickname)}${mio ? ` (${t("chat.you")})` : ""}
+         <span class="hora">${escapar(m.at)}</span></p>
+      <p class="texto">${escapar(m.text)}</p>
+    </div>`;
+  anadirLinea(li);
+}
+
+function pintarAviso(texto) {
+  const li = document.createElement("li");
+  li.className = "chat-aviso";
+  li.textContent = texto;
+  anadirLinea(li);
+}
+
+function conectar() {
+  const protocolo = location.protocol === "https:" ? "wss:" : "ws:";
+  const idioma = document.documentElement.lang || "es";
+  socket = new WebSocket(`${protocolo}//${location.host}/ws/chat?lang=${idioma}`);
+
+  socket.addEventListener("open", () => {
+    pintarEstado("chat.connected", "ok");
+    habilitarControles(true);
+    falloChat.hidden = true;
+    // Si ya había identidad guardada, se reenvía sin preguntar de nuevo.
+    if (identidad) {
+      socket.send(JSON.stringify({
+        type: "join", name: identidad.nickname, email: identidad.email,
+      }));
+    }
+  });
+
+  socket.addEventListener("message", (evento) => {
+    const datos = JSON.parse(evento.data);
+
+    if (datos.type === "welcome") {
+      listaMensajes.innerHTML = datos.history.length
+        ? "" : `<li class="vacio">${t("chat.empty")}</li>`;
+      datos.history.forEach(pintarMensaje);
+      pintarConectados(datos.online);
+
+    } else if (datos.type === "joined") {
+      identidad = datos.identity;
+      guardarIdentidad(identidad);
+      entrarEnSala();
+
+    } else if (datos.type === "message") {
+      pintarMensaje(datos.message);
+
+    } else if (datos.type === "system") {
+      pintarAviso(t(datos.event === "join" ? "chat.joined" : "chat.left",
+                    { nickname: datos.nickname }));
+
+    } else if (datos.type === "online") {
+      pintarConectados(datos.count);
+
+    } else if (datos.type === "error") {
+      falloChat.textContent = datos.error;
+      falloChat.hidden = false;
+    }
+  });
+
+  socket.addEventListener("close", () => {
+    pintarEstado("chat.disconnected", "error");
+    habilitarControles(false);
+    // Reconexión sencilla: si el servidor se reinicia, el chat vuelve solo.
+    clearTimeout(reconexion);
+    reconexion = setTimeout(conectar, 2000);
+  });
+
+  socket.addEventListener("error", () => socket.close());
+}
+
+function pintarConectados(n) {
+  document.getElementById("chat-conectados").textContent =
+    t("chat.online", { count: n });
+}
+
+function entrarEnSala() {
+  formChatEntrar.hidden = true;
+  salaChat.hidden = false;
+  document.getElementById("chat-yo").textContent = identidad.nickname;
+  document.getElementById("chat-yo").style.background = identidad.color;
+  document.getElementById("chat-texto").focus();
+}
+
+formChatEntrar.addEventListener("submit", (evento) => {
+  evento.preventDefault();
+  falloChat.hidden = true;
+  if (!formularioValido(formChatEntrar)) return;
+
+  enviarPorSocket({
+    type: "join",
+    name: document.getElementById("chat-apodo").value,
+    email: document.getElementById("chat-correo").value,
+  });
+});
+
+formChatEnviar.addEventListener("submit", (evento) => {
+  evento.preventDefault();
+  falloChat.hidden = true;
+
+  const campo = document.getElementById("chat-texto");
+  if (!campo.value.trim()) return;
+
+  if (enviarPorSocket({ type: "message", text: campo.value })) {
+    campo.value = "";
+  }
+});
+
+document.getElementById("btn-chat-salir").addEventListener("click", () => {
+  try { sessionStorage.removeItem(CLAVE_IDENTIDAD); } catch (e) {}
+  identidad = null;
+  salaChat.hidden = true;
+  formChatEntrar.hidden = false;
+  limpiarFormulario(formChatEntrar);
+  // Cerrar y reabrir hace que el servidor avise de la salida a los demás.
+  clearTimeout(reconexion);
+  socket.close();
+  setTimeout(conectar, 100);
+});
+
+function iniciarChat() {
+  identidad = leerIdentidad();
+  activarValidacion(formChatEntrar);
+  if (identidad) entrarEnSala();
+  pintarEstado("chat.connecting", "");
+  habilitarControles(false);
+  conectar();
+}
+
 // --- Formulario de préstamo -----------------------------------------------
 
 const capaPrestamo = document.getElementById("capa-prestamo");
@@ -560,6 +771,7 @@ async function iniciar() {
   activarValidacion(formPrestamo);
 
   await recargar();
+  iniciarChat();
 }
 
 iniciar();

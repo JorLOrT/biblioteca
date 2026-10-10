@@ -48,6 +48,12 @@ PATTERNS: Dict[str, str] = {
 
     # Celular peruano: nueve cifras que empiezan por 9.
     "phone": r"^9\d{8}$",
+
+    # Apodo del chat: de 2 a 24 caracteres; letras, cifras y . _ - y espacios.
+    "nickname": r"^[{L}0-9][{L}0-9 ._-]{{1,23}}$".format(L=LETRAS),
+
+    # Mensaje del chat: de 1 a 500 caracteres y que no sea solo espacios.
+    "message": r"^(?!\s*$)[\s\S]{1,500}$",
 }
 
 # Se compilan una sola vez, al importar el módulo.

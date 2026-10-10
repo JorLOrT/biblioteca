@@ -131,6 +131,50 @@
         </div>
       </div>
     </section>
+
+    <!-- ================= CHAT POR WEBSOCKET ================= -->
+    <section class="tarjeta destacada chat">
+      <div class="chat-cabecera">
+        <h2>💬 {{ t('chat.heading') }}</h2>
+        <span id="chat-estado" class="estado-conexion">{{ t('chat.connecting') }}</span>
+      </div>
+      <p class="nota">{{ t('chat.note') }}</p>
+
+      <!-- Paso 1: identificarse. No hay registro ni contraseña. -->
+      <form id="form-chat-entrar" class="validado" autocomplete="off" novalidate>
+        <div class="campo">
+          <label for="chat-apodo">{{ t('chat.nickname') }}</label>
+          <input type="text" id="chat-apodo" data-regla="nickname" maxlength="24">
+          <small class="pista">{{ t('hint.nickname') }}</small>
+          <small class="fallo" hidden></small>
+        </div>
+        <div class="campo">
+          <label for="chat-correo">{{ t('chat.email') }}</label>
+          <input type="text" id="chat-correo" data-regla="email">
+          <small class="pista">{{ t('hint.chat_email') }}</small>
+          <small class="fallo" hidden></small>
+        </div>
+        <button type="submit">{{ t('chat.enter') }}</button>
+      </form>
+
+      <!-- Paso 2: la sala, una vez identificado. -->
+      <div id="chat-sala" hidden>
+        <div class="chat-barra">
+          <span id="chat-yo" class="chat-yo"></span>
+          <span id="chat-conectados" class="chat-conectados"></span>
+          <button type="button" class="peligro" id="btn-chat-salir">{{ t('chat.leave') }}</button>
+        </div>
+
+        <ul id="chat-mensajes" class="chat-mensajes"></ul>
+
+        <form id="form-chat-enviar" class="chat-enviar" autocomplete="off">
+          <input type="text" id="chat-texto" maxlength="500"
+                 placeholder="{{ t('chat.placeholder') }}">
+          <button type="submit">{{ t('chat.send') }}</button>
+        </form>
+        <small class="fallo" id="chat-fallo" hidden></small>
+      </div>
+    </section>
   </main>
 
   <!-- ====== FORMULARIO DE PRÉSTAMO VALIDADO CON REGEX ====== -->

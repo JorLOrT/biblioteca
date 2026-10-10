@@ -10,6 +10,7 @@ al negocio y guarda de vuelta el resultado.
 
 from presentation.activity_controller import activity_bp
 from presentation.book_controller import book_bp
+from presentation.chat_socket import sock
 from presentation.error_handlers import register_error_handlers
 from presentation.home_controller import home_bp
 from presentation.i18n_controller import i18n_bp
@@ -21,6 +22,7 @@ from presentation.wishlist_controller import wishlist_bp
 __all__ = [
     "home_bp",
     "book_bp",
+    "sock",
     "loan_bp",
     "i18n_bp",
     "tools_bp",

@@ -88,6 +88,7 @@ Si el libro ya estaba prestado, el negocio lanza un `BusinessError`, no se escri
 | **Internacionalización** | `presentation/i18n/` | Español e inglés con menú desplegable. El negocio lanza claves de error; la presentación las traduce |
 | **Validación con regex** | `business/validators.py` | 8 patrones definidos una sola vez y publicados en `/api/validation-rules` para que el navegador use los mismos |
 | **Servicio externo** | `presentation/static/app.js` | El navegador consulta Open Library por ISBN y rellena el formulario, sin pasar por Flask |
+| **Chat en tiempo real** | `presentation/chat_socket.py`<br>`business/chat_service.py` | WebSocket en `/ws/chat`. Sin registro: apodo y correo. El servidor envía los mensajes sin que nadie los pida |
 
 Dos detalles que conviene entender:
 
@@ -117,8 +118,12 @@ Dos detalles que conviene entender:
 
 `200`/`201` correcto · `400` regla de negocio incumplida · `404` no existe.
 
-Aparte de esta API, el navegador llama a un servicio externo:
-`GET https://openlibrary.org/search.json?q=isbn:…`
+Aparte de esta API, el navegador abre dos conexiones que no siguen el ciclo petición–respuesta:
+
+- `WS /ws/chat?lang=es` — el chat. La conexión queda abierta en los dos sentidos, así que el
+  servidor puede enviar un mensaje sin que el navegador lo haya pedido.
+- `GET https://openlibrary.org/search.json?q=isbn:…` — un servicio externo, llamado
+  directamente desde el navegador.
 
 ---
 
@@ -142,11 +147,13 @@ App-N-Capas/
 │   ├── library_calculator.py   #   Funciones sin estado
 │   ├── activity_service.py     #   Estado en memoria
 │   ├── wishlist_service.py     #   Estado de sesión
+│   ├── chat_service.py         #   Historial y reglas del chat
 │   └── exceptions.py           #   Errores con clave de mensaje
 │
 └── presentation/               # PRESENTACIÓN
     ├── i18n/                   #   es.json · en.json · translate()
     ├── *_controller.py         #   books · loans · tools · activity · wishlist · i18n · validation
+    ├── chat_socket.py          #   WebSocket /ws/chat
     ├── error_handlers.py       #   Clave de error → HTTP + idioma
     ├── templates/index.html
     └── static/app.js · styles.css

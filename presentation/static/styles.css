@@ -11,6 +11,11 @@
 
 * { box-sizing: border-box; }
 
+/* El atributo `hidden` solo aporta `display: none` desde la hoja del
+   navegador, así que cualquier `display` explícito lo pisa. Varios elementos
+   de esta página son flex, de modo que sin esta regla seguirían viéndose. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   padding: 0 0 3rem;
@@ -438,4 +443,138 @@ td.isbn {
   font-size: .7rem;
   box-shadow: none;
   padding: .3rem;
+}
+
+/* --- Chat por WebSocket --------------------------------------------------- */
+
+.tarjeta.chat { border-left-color: #1a7f56; }
+
+.chat-cabecera {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.estado-conexion {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--suave);
+  padding: .15rem .6rem;
+  border-radius: 999px;
+  background: #eef1f4;
+}
+
+.estado-conexion.ok    { background: #e3f5ec; color: var(--verde); }
+.estado-conexion.error { background: #fdeaea; color: var(--rojo); }
+
+.chat-barra {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  margin-bottom: .75rem;
+}
+
+.chat-yo {
+  color: #fff;
+  background: var(--suave);
+  border-radius: 999px;
+  padding: .2rem .75rem;
+  font-size: .8rem;
+  font-weight: 600;
+}
+
+.chat-conectados {
+  flex: 1;
+  font-size: .78rem;
+  color: var(--suave);
+}
+
+.chat-mensajes {
+  list-style: none;
+  margin: 0 0 .75rem;
+  padding: .75rem;
+  height: 260px;
+  overflow-y: auto;
+  background: #f7f9fb;
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+}
+
+.chat-mensaje {
+  display: flex;
+  gap: .6rem;
+  margin-bottom: .7rem;
+  align-items: flex-start;
+}
+
+.chat-mensaje.mio { flex-direction: row-reverse; }
+.chat-mensaje.mio .burbuja { background: #e3f1fd; border-color: #c3ddf5; }
+.chat-mensaje.mio .autor   { flex-direction: row-reverse; }
+
+.avatar {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: .8rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.burbuja {
+  background: #fff;
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  padding: .45rem .7rem;
+  max-width: 76%;
+}
+
+.burbuja .autor {
+  display: flex;
+  gap: .5rem;
+  align-items: baseline;
+  margin: 0 0 .15rem;
+  font-size: .74rem;
+  font-weight: 600;
+  color: var(--suave);
+}
+
+.burbuja .hora { font-weight: normal; font-size: .7rem; }
+
+.burbuja .texto {
+  margin: 0;
+  font-size: .88rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.chat-aviso {
+  text-align: center;
+  font-size: .75rem;
+  color: var(--suave);
+  font-style: italic;
+  margin: .5rem 0;
+}
+
+.chat-mensajes .vacio { text-align: center; }
+
+.chat-enviar {
+  display: flex;
+  gap: .5rem;
+  align-items: stretch;
+}
+
+.chat-enviar input { flex: 1 1 auto; }
+.chat-enviar button { flex: none; }
+
+.chat-enviar input:disabled,
+button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
 }

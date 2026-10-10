@@ -19,6 +19,7 @@ from presentation import (
     home_bp,
     loan_bp,
     register_error_handlers,
+    sock,
     tools_bp,
     validation_bp,
     wishlist_bp,
@@ -51,6 +52,9 @@ def create_app() -> Flask:
     app.register_blueprint(activity_bp)   # endpoints STATEFUL (memoria)
     app.register_blueprint(wishlist_bp)   # endpoints STATEFUL (sesión)
     register_error_handlers(app)
+
+    # WebSocket del chat: mantiene la conexión abierta en los dos sentidos.
+    sock.init_app(app)
 
     return app
 
