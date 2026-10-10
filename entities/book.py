@@ -6,7 +6,7 @@ from typing import Optional
 
 @dataclass
 class Book:
-    """Un libro del catalogo de la biblioteca."""
+    """Un libro del catálogo de la biblioteca."""
 
     id: Optional[int]
     title: str
@@ -15,8 +15,8 @@ class Book:
     isbn: Optional[str] = None
     available: bool = True
 
-    def to_dict(self) -> dict:
-        """Representacion serializable a JSON."""
+    def to_dict(self) -> dict[str, object]:
+        """Representación serializable a JSON."""
         return {
             "id": self.id,
             "title": self.title,

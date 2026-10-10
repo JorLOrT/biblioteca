@@ -11,19 +11,13 @@ Es importante entender qué valida cada lado:
     JavaScript o llame a la API con curl, la validación se aplica igual.
 """
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, Response, jsonify
 
 from business.validators import PATTERNS
 
 validation_bp = Blueprint("validation", __name__, url_prefix="/api/validation-rules")
 
-# Qué campo del formulario usa qué patrón.
-FORM_FIELDS = {
-    "book": ["title", "author", "year", "isbn"],
-    "loan": ["borrower", "dni", "email", "phone"],
-}
-
 
 @validation_bp.get("")
-def get_rules():
-    return jsonify({"patterns": PATTERNS, "forms": FORM_FIELDS})
+def get_rules() -> Response:
+    return jsonify({"patterns": PATTERNS})

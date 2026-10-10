@@ -10,10 +10,11 @@ la lista actual como argumento y devuelve la nueva; guardarla en la sesión es
 responsabilidad de la capa de presentación (`wishlist_controller`).
 """
 
-from typing import List, Sequence
+from collections.abc import Sequence
 
-from business.exceptions import BusinessError, NotFoundError
-from data_access.book_repository import BookRepository
+from business.book_service import require_book
+from business.exceptions import BusinessError
+from data_access.unit_of_work import unit_of_work
 from entities.book import Book
 
 MAX_WISHLIST = 5
@@ -22,22 +23,14 @@ MAX_WISHLIST = 5
 class WishlistService:
     """Gestiona la lista de libros que un usuario quiere leer más adelante."""
 
-    def __init__(self) -> None:
-        self._books = BookRepository()
-
-    def toggle(self, wishlist: Sequence[int], book_id: int) -> List[int]:
+    def toggle(self, wishlist: Sequence[int], book_id: int) -> list[int]:
         """STATEFUL 2 — Añade el libro a la lista, o lo quita si ya estaba.
 
         El resultado depende del estado anterior: la MISMA llamada añade la
         primera vez y quita la segunda.
         """
-        try:
-            book_id = int(book_id)
-        except (TypeError, ValueError):
-            raise BusinessError("error.book_required")
-
-        if self._books.get_by_id(book_id) is None:
-            raise NotFoundError("error.book_not_found", id=book_id)
+        with unit_of_work() as uow:
+            require_book(uow, book_id)
 
         updated = list(wishlist)
 
@@ -52,15 +45,12 @@ class WishlistService:
         updated.append(book_id)
         return updated
 
-    def detail(self, wishlist: Sequence[int]) -> List[Book]:
+    def detail(self, wishlist: Sequence[int]) -> list[Book]:
         """Convierte los ids guardados en la sesión en libros completos.
 
         Ignora los que ya no existan (alguien pudo eliminarlos del catálogo
         mientras la sesión seguía abierta).
         """
-        books = []
-        for book_id in wishlist:
-            book = self._books.get_by_id(book_id)
-            if book is not None:
-                books.append(book)
-        return books
+        with unit_of_work() as uow:
+            books = [uow.books.get_by_id(book_id) for book_id in wishlist]
+        return [book for book in books if book is not None]

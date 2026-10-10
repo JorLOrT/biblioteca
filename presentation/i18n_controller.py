@@ -7,21 +7,21 @@
                         idioma hablarle a este usuario.
 """
 
-from flask import Blueprint, jsonify, session
+from flask import Blueprint, Response, jsonify, session
 
-from presentation.i18n import SESSION_KEY, SUPPORTED, catalog, current_locale, normalize
+from presentation.i18n import SESSION_KEY, catalog, current_locale, normalize
 
 i18n_bp = Blueprint("i18n", __name__, url_prefix="/api/i18n")
 
 
 @i18n_bp.get("")
-def get_catalog():
+def get_catalog() -> Response:
     lang = current_locale()
-    return jsonify({"lang": lang, "supported": list(SUPPORTED), "messages": catalog(lang)})
+    return jsonify({"lang": lang, "messages": catalog(lang)})
 
 
 @i18n_bp.post("/<lang>")
-def set_language(lang: str):
+def set_language(lang: str) -> Response:
     code = normalize(lang)
     session[SESSION_KEY] = code  # <-- el idioma se recuerda entre peticiones
     return jsonify({"lang": code, "messages": catalog(code)})

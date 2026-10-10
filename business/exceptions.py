@@ -12,7 +12,7 @@ idioma se le va a hablar al usuario ni qué código HTTP le corresponde.
 class BusinessError(Exception):
     """Una regla de negocio impide la operación (la presentación responde 400)."""
 
-    def __init__(self, key: str, **params):
+    def __init__(self, key: str, **params: object) -> None:
         super().__init__(key)
         self.key = key
         self.params = params

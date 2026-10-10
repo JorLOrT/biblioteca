@@ -1,9 +1,8 @@
 """Repositorio de libros: todo el SQL de la tabla `books`."""
 
 import sqlite3
-from typing import List, Optional
+from typing import Optional
 
-from data_access.database import get_connection
 from entities.book import Book
 
 
@@ -11,7 +10,12 @@ class BookRepository:
     """Operaciones CRUD sobre la tabla `books`.
 
     No valida datos ni aplica reglas: eso es trabajo de la capa de negocio.
+    Trabaja sobre la conexión que le da la unidad de trabajo, así que no abre
+    ni confirma transacciones por su cuenta.
     """
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._db = connection
 
     @staticmethod
     def _to_entity(row: sqlite3.Row) -> Book:
@@ -25,43 +29,41 @@ class BookRepository:
             available=bool(row["available"]),
         )
 
-    def get_all(self, only_available: bool = False) -> List[Book]:
+    def get_all(self, only_available: bool = False) -> list[Book]:
         query = "SELECT * FROM books"
         if only_available:
             query += " WHERE available = 1"
-        query += " ORDER BY title"
-
-        with get_connection() as connection:
-            rows = connection.execute(query).fetchall()
+        rows = self._db.execute(query + " ORDER BY title").fetchall()
         return [self._to_entity(row) for row in rows]
 
     def get_by_id(self, book_id: int) -> Optional[Book]:
-        with get_connection() as connection:
-            row = connection.execute(
-                "SELECT * FROM books WHERE id = ?", (book_id,)
-            ).fetchone()
+        row = self._db.execute(
+            "SELECT * FROM books WHERE id = ?", (book_id,)
+        ).fetchone()
         return self._to_entity(row) if row else None
 
     def create(self, book: Book) -> Book:
-        with get_connection() as connection:
-            cursor = connection.execute(
-                "INSERT INTO books (title, author, year, isbn, available) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (book.title, book.author, book.year, book.isbn, int(book.available)),
-            )
-            book.id = cursor.lastrowid
+        cursor = self._db.execute(
+            "INSERT INTO books (title, author, year, isbn, available) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (book.title, book.author, book.year, book.isbn, int(book.available)),
+        )
+        book.id = cursor.lastrowid
         return book
 
     def update(self, book: Book) -> Book:
-        with get_connection() as connection:
-            connection.execute(
-                "UPDATE books SET title = ?, author = ?, year = ?, isbn = ?, "
-                "available = ? WHERE id = ?",
-                (book.title, book.author, book.year, book.isbn,
-                 int(book.available), book.id),
-            )
+        self._db.execute(
+            "UPDATE books SET title = ?, author = ?, year = ?, isbn = ?, "
+            "available = ? WHERE id = ?",
+            (book.title, book.author, book.year, book.isbn,
+             int(book.available), book.id),
+        )
         return book
 
+    def set_available(self, book_id: int, available: bool) -> None:
+        self._db.execute(
+            "UPDATE books SET available = ? WHERE id = ?", (int(available), book_id)
+        )
+
     def delete(self, book_id: int) -> None:
-        with get_connection() as connection:
-            connection.execute("DELETE FROM books WHERE id = ?", (book_id,))
+        self._db.execute("DELETE FROM books WHERE id = ?", (book_id,))

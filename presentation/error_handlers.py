@@ -5,23 +5,32 @@ del usuario y los códigos de estado HTTP. La respuesta incluye:
   - `error`: el mensaje ya traducido, listo para mostrar.
   - `code` : la clave original, por si el cliente quiere reaccionar al tipo de
              error sin depender del texto.
+
+El chat envía sus errores con este mismo formato (`error_payload`).
 """
 
-from flask import Flask, jsonify
+from typing import Optional, TypedDict
+
+from flask import Flask, Response, jsonify
 
 from business.exceptions import BusinessError, NotFoundError
 from presentation.i18n import translate
 
 
-def _payload(error: BusinessError) -> dict:
-    return {"error": translate(error.key, **error.params), "code": error.key}
+class ErrorPayload(TypedDict):
+    error: str
+    code: str
+
+
+def error_payload(error: BusinessError, lang: Optional[str] = None) -> ErrorPayload:
+    return {"error": translate(error.key, lang=lang, **error.params), "code": error.key}
 
 
 def register_error_handlers(app: Flask) -> None:
     @app.errorhandler(NotFoundError)
-    def handle_not_found(error: NotFoundError):
-        return jsonify(_payload(error)), 404
+    def handle_not_found(error: NotFoundError) -> tuple[Response, int]:
+        return jsonify(error_payload(error)), 404
 
     @app.errorhandler(BusinessError)
-    def handle_business_error(error: BusinessError):
-        return jsonify(_payload(error)), 400
+    def handle_business_error(error: BusinessError) -> tuple[Response, int]:
+        return jsonify(error_payload(error)), 400

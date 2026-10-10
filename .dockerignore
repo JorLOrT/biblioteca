@@ -15,3 +15,19 @@ venv/
 .gitignore
 README.md
 *.log
+
+# Herramientas de revisión del código y sus cachés: la imagen no las usa
+pyproject.toml
+requirements-dev.txt
+stubs/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+
+# Material de entrega (Word, PDF, capturas y sus scripts): no es la aplicación
+*.docx
+*.pdf
+*.pptx
+*.odt
+docs/
+capturas/

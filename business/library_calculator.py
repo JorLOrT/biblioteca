@@ -10,6 +10,7 @@ servidor y se podrían ejecutar en cualquier máquina indistintamente.
 """
 
 from datetime import date, timedelta
+from typing import TypedDict
 
 from business.exceptions import BusinessError
 
@@ -17,12 +18,19 @@ DEFAULT_LOAN_DAYS = 15  # plazo estándar de un préstamo
 DAILY_FINE = 0.50       # multa por cada día de retraso
 
 
+class Penalty(TypedDict):
+    """Retraso de un préstamo y la multa que le corresponde."""
+
+    days_late: int
+    fine: float
+
+
 def _parse_date(value: str, error_key: str) -> date:
     """Convierte un texto AAAA-MM-DD en fecha, o lanza un error de negocio."""
     try:
         return date.fromisoformat(value)
-    except (TypeError, ValueError):
-        raise BusinessError(error_key)
+    except ValueError:
+        raise BusinessError(error_key) from None
 
 
 def calculate_due_date(loan_date: str, days: int = DEFAULT_LOAN_DAYS) -> str:
@@ -34,20 +42,16 @@ def calculate_due_date(loan_date: str, days: int = DEFAULT_LOAN_DAYS) -> str:
     >>> calculate_due_date("2026-03-01", 15)
     '2026-03-16'
     """
-    try:
-        days_value = int(days)
-    except (TypeError, ValueError):
-        raise BusinessError("error.days_not_number")
-
-    if days_value <= 0:
+    if days <= 0:
         raise BusinessError("error.days_positive")
 
-    return (_parse_date(loan_date, "error.invalid_date_loan") + timedelta(days=days_value)).isoformat()
+    start = _parse_date(loan_date, "error.invalid_date_loan")
+    return (start + timedelta(days=days)).isoformat()
 
 
 def calculate_fine(
     due_date: str, reference_date: str, daily_rate: float = DAILY_FINE
-) -> dict:
+) -> Penalty:
     """STATELESS 2 — Días de retraso y multa acumulada de un préstamo.
 
     Entrada: la fecha de vencimiento y la fecha con la que se compara (la de

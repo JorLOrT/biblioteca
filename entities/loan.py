@@ -14,14 +14,15 @@ class Loan:
     id: Optional[int]
     book_id: int
     borrower: str
+    loan_date: str
+    # Opcionales porque las filas anteriores a la migración no los tienen.
     borrower_dni: Optional[str] = None
     borrower_email: Optional[str] = None
     borrower_phone: Optional[str] = None
-    loan_date: str = ""
     return_date: Optional[str] = None
 
-    # Campos calculados: no están en la tabla `loans`. Los rellena la capa de
-    # negocio al listar, con los datos del libro y las funciones de cálculo.
+    # Campos calculados: no están en la tabla `loans`. El título lo trae el
+    # JOIN con `books`; el vencimiento y la multa los calcula la capa de negocio.
     book_title: Optional[str] = None
     due_date: Optional[str] = None
     days_late: int = 0
@@ -31,7 +32,7 @@ class Loan:
     def is_active(self) -> bool:
         return self.return_date is None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, object]:
         """Representación serializable a JSON."""
         return {
             "id": self.id,

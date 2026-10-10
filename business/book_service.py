@@ -1,103 +1,99 @@
 """Reglas de negocio del catálogo de libros."""
 
+from dataclasses import replace
 from datetime import date
-from typing import List, Optional
 
 from business import activity_service
 from business.exceptions import BusinessError, NotFoundError
 from business.validators import normalize_isbn, validate_field
-from data_access.book_repository import BookRepository
-from data_access.loan_repository import LoanRepository
+from data_access.unit_of_work import UnitOfWork, unit_of_work
 from entities.book import Book
 
 FIRST_PRINTED_YEAR = 1450  # imprenta de Gutenberg
 
 
+def require_book(uow: UnitOfWork, book_id: int) -> Book:
+    """El libro con ese id. Si no existe, la operación se detiene con un 404."""
+    book = uow.books.get_by_id(book_id)
+    if book is None:
+        raise NotFoundError("error.book_not_found", id=book_id)
+    return book
+
+
+def _validated_book(title: str, author: str, year: str, isbn: str) -> Book:
+    """Comprueba el formulario de un libro y lo devuelve con los datos ya limpios.
+
+    El FORMATO lo comprueban las expresiones regulares de `validators`; el
+    SIGNIFICADO (que el año sea posible) se comprueba aquí, porque un regex
+    puede decir que «3000» son cuatro cifras, pero no que sea un año válido.
+    """
+    clean_title = validate_field("title", title)
+    clean_author = validate_field("author", author)
+    clean_isbn = normalize_isbn(validate_field("isbn", isbn))
+
+    year_value = int(validate_field("year", year))
+    current_year = date.today().year
+    if not FIRST_PRINTED_YEAR <= year_value <= current_year:
+        raise BusinessError(
+            "error.year_out_of_range", min=FIRST_PRINTED_YEAR, max=current_year
+        )
+
+    return Book(
+        id=None,
+        title=clean_title,
+        author=clean_author,
+        year=year_value,
+        isbn=clean_isbn,
+    )
+
+
 class BookService:
     """Valida los datos de un libro y coordina su persistencia."""
 
-    def __init__(self) -> None:
-        self._books = BookRepository()
-        self._loans = LoanRepository()
-
-    # --- Reglas de validación -------------------------------------------------
-
-    def _validate(self, title: str, author: str, year, isbn: str) -> dict:
-        """Comprueba el formulario de un libro y devuelve sus datos ya limpios.
-
-        El FORMATO lo comprueban las expresiones regulares de `validators`; el
-        SIGNIFICADO (que el año sea posible) se comprueba aquí, porque un regex
-        puede decir que «3000» son cuatro cifras, pero no que sea un año válido.
-        """
-        datos = {
-            "title": validate_field("title", title),
-            "author": validate_field("author", author),
-            "isbn": normalize_isbn(validate_field("isbn", isbn)),
-        }
-
-        year_value = int(validate_field("year", year))
-        current_year = date.today().year
-        if not FIRST_PRINTED_YEAR <= year_value <= current_year:
-            raise BusinessError(
-                "error.year_out_of_range", min=FIRST_PRINTED_YEAR, max=current_year
-            )
-        datos["year"] = year_value
-        return datos
-
-    # --- Casos de uso ---------------------------------------------------------
-
-    def list_books(self, only_available: bool = False) -> List[Book]:
-        return self._books.get_all(only_available=only_available)
+    def list_books(self, only_available: bool = False) -> list[Book]:
+        with unit_of_work() as uow:
+            return uow.books.get_all(only_available=only_available)
 
     def get_book(self, book_id: int) -> Book:
-        book = self._books.get_by_id(book_id)
-        if book is None:
-            raise NotFoundError("error.book_not_found", id=book_id)
-        return book
+        with unit_of_work() as uow:
+            return require_book(uow, book_id)
 
-    def create_book(self, title: str, author: str, year, isbn: str = "") -> Book:
-        datos = self._validate(title, author, year, isbn)
+    def create_book(self, title: str, author: str, year: str, isbn: str) -> Book:
         # Un libro recién registrado siempre entra disponible al catálogo.
-        book = Book(
-            id=None,
-            title=datos["title"],
-            author=datos["author"],
-            year=datos["year"],
-            isbn=datos["isbn"],
-            available=True,
-        )
-        created = self._books.create(book)
-        activity_service.record("libros_registrados")  # STATEFUL
+        book = _validated_book(title, author, year, isbn)
+        with unit_of_work() as uow:
+            created = uow.books.create(book)
+        activity_service.record(activity_service.BOOKS_CREATED)  # STATEFUL
         return created
 
     def update_book(
-        self, book_id: int, title: str, author: str, year, isbn: str = ""
+        self, book_id: int, title: str, author: str, year: str, isbn: str
     ) -> Book:
-        book = self.get_book(book_id)
-        datos = self._validate(title, author, year, isbn or book.isbn or "")
-
-        book.title = datos["title"]
-        book.author = datos["author"]
-        book.year = datos["year"]
-        book.isbn = datos["isbn"]
-        # `available` no se toca aquí: solo lo cambian los préstamos.
-        return self._books.update(book)
-
-    def delete_book(self, book_id: int) -> None:
-        book = self.get_book(book_id)
-
-        # Regla: un libro que alguien tiene prestado no se puede eliminar.
-        active_loan = self._loans.get_active_by_book(book.id)
-        if active_loan is not None:
-            raise BusinessError(
-                "error.book_has_active_loan",
-                title=book.title,
-                borrower=active_loan.borrower,
+        with unit_of_work() as uow:
+            current = require_book(uow, book_id)
+            edited = _validated_book(title, author, year, isbn or current.isbn or "")
+            # `available` no se toca aquí: solo lo cambian los préstamos.
+            return uow.books.update(
+                replace(edited, id=current.id, available=current.available)
             )
 
-        # El historial de préstamos apunta al libro, así que se limpia primero
-        # para no dejar filas huérfanas en `loans`.
-        self._loans.delete_by_book(book.id)
-        self._books.delete(book.id)
+    def delete_book(self, book_id: int) -> None:
+        with unit_of_work() as uow:
+            book = require_book(uow, book_id)
 
-        activity_service.record("libros_eliminados")  # STATEFUL
+            # Regla: un libro que alguien tiene prestado no se puede eliminar.
+            active_loan = uow.loans.get_active_by_book(book_id)
+            if active_loan is not None:
+                raise BusinessError(
+                    "error.book_has_active_loan",
+                    title=book.title,
+                    borrower=active_loan.borrower,
+                )
+
+            # El historial de préstamos apunta al libro, así que se borra
+            # primero. Las dos escrituras van en la misma transacción: si la
+            # segunda falla, el historial no se pierde.
+            uow.loans.delete_by_book(book_id)
+            uow.books.delete(book_id)
+
+        activity_service.record(activity_service.BOOKS_DELETED)  # STATEFUL

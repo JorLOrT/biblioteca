@@ -1,0 +1,5 @@
+# Herramientas para revisar el código. La aplicación no las necesita para
+# funcionar, por eso van aparte de requirements.txt.
+-r requirements.txt
+ruff==0.17.0
+mypy==1.19.1

@@ -2,16 +2,14 @@
 
 import os
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator
 
 # La base de datos es un único archivo en la raíz del proyecto.
 # `LIBRARY_DB` permite apuntar a otro archivo (pruebas, capturas, demos) sin
 # tocar la base de datos real.
-DB_PATH = os.environ.get(
-    "LIBRARY_DB",
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "library.db"),
-)
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.environ.get("LIBRARY_DB", os.path.join(_PROJECT_ROOT, "library.db"))
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS books (
@@ -55,23 +53,23 @@ MIGRATIONS = [
 ]
 
 
-def _apply_migrations(connection) -> None:
-    for tabla, columna, tipo in MIGRATIONS:
-        existentes = {
-            fila["name"]
-            for fila in connection.execute("PRAGMA table_info({})".format(tabla))
+def _apply_migrations(connection: sqlite3.Connection) -> None:
+    # SQLite no admite `?` en los nombres de tabla o columna, así que se
+    # interpolan. Es seguro porque salen de MIGRATIONS, nunca del usuario.
+    for table, column, column_type in MIGRATIONS:
+        existing = {
+            row["name"] for row in connection.execute(f"PRAGMA table_info({table})")
         }
-        if columna not in existentes:
-            connection.execute(
-                "ALTER TABLE {} ADD COLUMN {} {}".format(tabla, columna, tipo)
-            )
+        if column not in existing:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
 
 
 @contextmanager
 def get_connection() -> Iterator[sqlite3.Connection]:
     """Abre una conexión a SQLite, confirma los cambios y siempre la cierra.
 
-    Las filas son accesibles por nombre de columna (``row["title"]``).
+    Si dentro del bloque se lanza una excepción, se deshace todo lo escrito en
+    él. Las filas son accesibles por nombre de columna (``row["title"]``).
     """
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row

@@ -5,7 +5,7 @@ a la capa de negocio y guarda de vuelta el resultado. El negocio sigue sin
 saber que existe la web.
 """
 
-from flask import Blueprint, jsonify, session
+from flask import Blueprint, Response, jsonify, session
 
 from business.wishlist_service import MAX_WISHLIST, WishlistService
 
@@ -15,9 +15,15 @@ service = WishlistService()
 SESSION_KEY = "wishlist"
 
 
+def _saved_ids() -> list[int]:
+    """La lista guardada en la sesión. La cookie va firmada: nadie la altera."""
+    book_ids: list[int] = session.get(SESSION_KEY, [])
+    return book_ids
+
+
 @wishlist_bp.get("")
-def get_wishlist():
-    book_ids = session.get(SESSION_KEY, [])
+def get_wishlist() -> Response:
+    book_ids = _saved_ids()
     books = service.detail(book_ids)
     return jsonify(
         {
@@ -29,9 +35,8 @@ def get_wishlist():
 
 
 @wishlist_bp.post("/<int:book_id>")
-def toggle(book_id: int):
-    book_ids = session.get(SESSION_KEY, [])
-    updated = service.toggle(book_ids, book_id)
+def toggle(book_id: int) -> Response:
+    updated = service.toggle(_saved_ids(), book_id)
 
     session[SESSION_KEY] = updated  # <-- aquí se guarda el estado del usuario
 
@@ -39,6 +44,6 @@ def toggle(book_id: int):
 
 
 @wishlist_bp.delete("")
-def clear():
+def clear() -> Response:
     session.pop(SESSION_KEY, None)
     return jsonify({"book_ids": []})

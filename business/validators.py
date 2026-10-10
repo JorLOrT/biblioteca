@@ -17,18 +17,17 @@ reciben.
 """
 
 import re
-from typing import Dict
 
 from business.exceptions import BusinessError
 
-LETRAS = "A-Za-zÁÉÍÓÚÜÑáéíóúüñ"
+LETTERS = "A-Za-zÁÉÍÓÚÜÑáéíóúüñ"
 
-PATTERNS: Dict[str, str] = {
+PATTERNS: dict[str, str] = {
     # Título: de 2 a 120 caracteres y que no sea solo espacios.
     "title": r"^(?!\s*$).{2,120}$",
 
     # Autor: letras, espacios, puntos, apóstrofos y guiones. Ninguna cifra.
-    "author": r"^[{L}][{L}.'\- ]{{2,79}}$".format(L=LETRAS),
+    "author": rf"^[{LETTERS}][{LETTERS}.'\- ]{{2,79}}$",
 
     # Año: exactamente cuatro cifras (el rango válido lo comprueba BookService).
     "year": r"^\d{4}$",
@@ -38,7 +37,7 @@ PATTERNS: Dict[str, str] = {
     "isbn": r"^97[89][-\s]?(?:\d[-\s]?){9}\d$",
 
     # Nombre del prestatario: al menos dos palabras de dos letras o más.
-    "borrower": r"^[{L}]{{2,}}(?: [{L}]{{2,}})+$".format(L=LETRAS),
+    "borrower": rf"^[{LETTERS}]{{2,}}(?: [{LETTERS}]{{2,}})+$",
 
     # DNI peruano: ocho cifras.
     "dni": r"^\d{8}$",
@@ -50,14 +49,14 @@ PATTERNS: Dict[str, str] = {
     "phone": r"^9\d{8}$",
 
     # Apodo del chat: de 2 a 24 caracteres; letras, cifras y . _ - y espacios.
-    "nickname": r"^[{L}0-9][{L}0-9 ._-]{{1,23}}$".format(L=LETRAS),
+    "nickname": rf"^[{LETTERS}0-9][{LETTERS}0-9 ._-]{{1,23}}$",
 
     # Mensaje del chat: de 1 a 500 caracteres y que no sea solo espacios.
     "message": r"^(?!\s*$)[\s\S]{1,500}$",
 }
 
 # Se compilan una sola vez, al importar el módulo.
-_COMPILADOS = {campo: re.compile(patron) for campo, patron in PATTERNS.items()}
+_COMPILED = {field: re.compile(pattern) for field, pattern in PATTERNS.items()}
 
 
 def validate_field(field: str, value: str) -> str:
@@ -65,19 +64,29 @@ def validate_field(field: str, value: str) -> str:
 
     Devuelve el valor ya recortado si encaja; si no, lanza un `BusinessError`
     con la clave `error.invalid_<campo>`, que la capa de presentación traducirá
-    al idioma del usuario.
+    al idioma del usuario. Un `field` sin patrón es un error de programación y
+    falla con KeyError.
     """
-    if field not in _COMPILADOS:
-        raise BusinessError("error.unexpected")
+    text = value.strip()
+    if not _COMPILED[field].match(text):
+        raise BusinessError(f"error.invalid_{field}")
+    return text
 
-    texto = (value or "").strip() if isinstance(value, str) else str(value or "").strip()
 
-    if not _COMPILADOS[field].match(texto):
-        raise BusinessError("error.invalid_{}".format(field))
+def parse_int(value: object, error_key: str) -> int:
+    """Convierte en entero un número o un texto con cifras; si no, lanza `error_key`.
 
-    return texto
+    Un booleano no cuenta como número aunque Python lo trate como tal: `true`
+    en un JSON no es un id de libro.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise BusinessError(error_key)
+    try:
+        return int(value)
+    except ValueError:
+        raise BusinessError(error_key) from None
 
 
 def normalize_isbn(isbn: str) -> str:
     """Deja el ISBN en cifras, sin guiones ni espacios, para guardarlo igual siempre."""
-    return re.sub(r"[-\s]", "", isbn or "")
+    return re.sub(r"[-\s]", "", isbn)
