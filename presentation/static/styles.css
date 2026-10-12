@@ -147,6 +147,12 @@ button:hover { filter: brightness(1.08); }
 
 button.secondary { background: var(--green); }
 button.danger { background: var(--red); }
+/* Acciones que no cambian nada por sí solas (editar, cancelar). */
+button.plain {
+  background: var(--surface);
+  color: var(--text-color);
+  border: 1px solid var(--border);
+}
 
 table {
   width: 100%;
@@ -420,7 +426,7 @@ input.invalid:focus { outline-color: var(--red); }
 input.valid { border-color: #8fcfae; }
 
 /* El botón de un formulario validado se alinea con los campos, no con las pistas. */
-form.validated > button[type="submit"] { margin-top: 1.15rem; }
+form.validated > button { margin-top: 1.15rem; }
 
 /* --- Cuadro de diálogo del préstamo -------------------------------------- */
 
@@ -522,6 +528,38 @@ form.validated > button[type="submit"] { margin-top: 1.15rem; }
   box-shadow: none;
   padding: .3rem;
 }
+
+/* --- Cabecera del catálogo y modo edición -------------------------------- */
+
+.card-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .5rem 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.card-heading h2 { margin: 0; }
+
+.filter {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  font-size: .85rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.filter input { flex: none; margin: 0; }
+
+/* Mientras se edita un libro, la tarjeta del formulario se distingue. */
+.card.editing {
+  border-left: 4px solid var(--primary);
+  background: #f5f8ff;
+}
+
+.card.editing h2 { color: var(--primary); }
 
 /* --- Chat por WebSocket --------------------------------------------------- */
 

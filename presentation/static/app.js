@@ -2,7 +2,9 @@
 // no conoce ni las reglas de negocio ni la base de datos.
 
 const notice = document.getElementById("notice");
+const bookCard = document.getElementById("book-card");
 const bookForm = document.getElementById("book-form");
+const onlyAvailable = document.getElementById("only-available");
 const bookRows = document.getElementById("book-rows");
 const loanRows = document.getElementById("loan-rows");
 const historyRows = document.getElementById("history-rows");
@@ -17,6 +19,7 @@ let loans = [];     // último listado de préstamos, activos e historial
 let wishlist = [];  // copia local de la lista de deseos que guarda la sesión
 let messages = {};  // catálogo de traducciones que entrega /api/i18n
 let rules = {};     // expresiones regulares que entrega /api/validation-rules
+let editingId = null;  // libro que se está editando; null mientras se agrega uno
 let noticeTimer = null;
 
 /** Traduce una clave sustituyendo sus parámetros: t("wishlist.count", {count: 2, max: 5}) */
@@ -62,9 +65,9 @@ async function api(url, options) {
   return data;
 }
 
-function postJson(url, body) {
+function sendJson(method, url, body) {
   return api(url, {
-    method: "POST",
+    method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -243,6 +246,7 @@ function bookRow(book) {
           ${wished ? "★" : "☆"}
         </button>
         ${mainAction}
+        <button class="plain" data-action="edit" data-id="${book.id}">${t("action.edit")}</button>
         <button class="danger" data-action="delete" data-id="${book.id}" ${blocked}>${t("action.delete")}</button>
       </td>
     </tr>
@@ -251,9 +255,10 @@ function bookRow(book) {
 
 function renderBooks(list) {
   books = list;
+  const empty = onlyAvailable.checked ? "empty.available" : "empty.books";
   bookRows.innerHTML = list.length
     ? list.map(bookRow).join("")
-    : `<tr><td colspan="3" class="empty">${t("empty.books")}</td></tr>`;
+    : `<tr><td colspan="3" class="empty">${t(empty)}</td></tr>`;
 }
 
 // --- Préstamos: activos e historial ----------------------------------------
@@ -368,7 +373,8 @@ async function reload() {
   renderWishlist(await api("/api/wishlist"));
 
   const [bookList, loanList, activity] = await Promise.all([
-    api("/api/books"),
+    // El filtro lo aplica el servidor: GET /api/books?available=true.
+    api(onlyAvailable.checked ? "/api/books?available=true" : "/api/books"),
     api("/api/loans"),
     api("/api/activity"),
   ]);
@@ -381,23 +387,60 @@ async function reload() {
 
 // --- Acciones del usuario --------------------------------------------------
 
+// Cada campo del formulario y el nombre que espera la API.
+const BOOK_FIELDS = { title: "book-title", author: "book-author", year: "book-year", isbn: "book-isbn" };
+
+function bookFormData() {
+  return Object.fromEntries(Object.entries(BOOK_FIELDS)
+    .map(([name, id]) => [name, document.getElementById(id).value]));
+}
+
+/** El formulario de agregar pasa a editar el libro elegido, con sus datos. */
+function startEditing(book) {
+  editingId = book.id;
+  resetForm(bookForm);
+  lookupResult.hidden = true;
+  for (const [name, id] of Object.entries(BOOK_FIELDS)) {
+    document.getElementById(id).value = book[name] ?? "";
+  }
+  document.getElementById("book-form-heading").textContent = t("form.edit_book", { title: book.title });
+  document.getElementById("book-submit").textContent = t("form.save");
+  document.getElementById("book-cancel").hidden = false;
+  bookCard.classList.add("editing");
+  bookCard.scrollIntoView({ block: "start" });
+  document.getElementById("book-title").focus({ preventScroll: true });
+}
+
+/** Vuelve a dejar el formulario listo para agregar un libro nuevo. */
+function stopEditing() {
+  editingId = null;
+  resetForm(bookForm);
+  lookupResult.hidden = true;
+  document.getElementById("book-form-heading").textContent = t("form.add_book");
+  document.getElementById("book-submit").textContent = t("form.add");
+  document.getElementById("book-cancel").hidden = true;
+  bookCard.classList.remove("editing");
+}
+
 bookForm.addEventListener("submit", (event) => {
   event.preventDefault();
   runAction(async () => {
     // Primera barrera: los regex en el navegador. Si algo falla no se envía nada.
     if (!formIsValid(bookForm)) return;
 
-    const book = await postJson("/api/books", {
-      title: document.getElementById("book-title").value,
-      author: document.getElementById("book-author").value,
-      year: document.getElementById("book-year").value,
-      isbn: document.getElementById("book-isbn").value,
-    });
-    resetForm(bookForm);
-    lookupResult.hidden = true;
-    await succeed(t("msg.book_added", { title: book.title }));
+    // Mismo formulario, dos endpoints: POST crea un libro y PUT cambia uno.
+    const editing = editingId !== null;
+    const book = editing
+      ? await sendJson("PUT", `/api/books/${editingId}`, bookFormData())
+      : await sendJson("POST", "/api/books", bookFormData());
+    stopEditing();
+    await succeed(t(editing ? "msg.book_updated" : "msg.book_added", { title: book.title }));
   });
 });
+
+document.getElementById("book-cancel").addEventListener("click", stopEditing);
+
+onlyAvailable.addEventListener("change", () => runAction(reload));
 
 // Calculadora: llama a los dos endpoints STATELESS.
 calcForm.addEventListener("submit", (event) => {
@@ -477,6 +520,9 @@ const ROW_ACTIONS = {
   lend(bookId) {
     return openLoanForm(bookId);  // el préstamo se registra al enviar el formulario
   },
+  edit(bookId) {
+    startEditing(bookById(bookId));  // los cambios se guardan al enviar el formulario
+  },
   async return(loanId) {
     const loan = loans.find((candidate) => candidate.id === loanId);
     if (!confirmReturn(loan)) return;
@@ -487,6 +533,7 @@ const ROW_ACTIONS = {
     const { title } = bookById(bookId);
     if (!confirm(t("confirm.delete", { title }))) return;
     await api(`/api/books/${bookId}`, { method: "DELETE" });
+    if (editingId === bookId) stopEditing();
     await succeed(t("msg.book_deleted_title", { title }));
   },
 };
@@ -902,7 +949,7 @@ loanForm.addEventListener("submit", (event) => {
   runAction(async () => {
     if (!formIsValid(loanForm)) return;
 
-    const loan = await postJson("/api/loans", {
+    const loan = await sendJson("POST", "/api/loans", {
       book_id: bookToLend,
       borrower: document.getElementById("loan-borrower").value,
       dni: document.getElementById("loan-dni").value,

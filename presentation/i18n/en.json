@@ -157,5 +157,13 @@
   "msg.book_returned_late": "\"{title}\" returned {days} days late: fine of {fine}.",
   "msg.book_returned_late_one": "\"{title}\" returned 1 day late: fine of {fine}.",
   "msg.book_deleted_title": "\"{title}\" deleted from the catalogue.",
-  "loanform.due": "Loan period of {days} days: it must be returned by {date}."
+  "loanform.due": "Loan period of {days} days: it must be returned by {date}.",
+  "action.edit": "Edit",
+  "form.edit_book": "Edit \"{title}\"",
+  "form.save": "Save changes",
+  "form.cancel_edit": "Cancel",
+  "msg.book_updated": "\"{title}\" updated.",
+  "catalog.only_available": "Available only",
+  "empty.available": "No books are available right now.",
+  "activity.books_updated": "Books edited"
 }

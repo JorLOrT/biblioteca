@@ -16,10 +16,12 @@ El conjunto de conexiones vive aquí porque un socket abierto es un detalle de
 la capa de presentación: al negocio no le sirve de nada.
 """
 
+import contextlib
 import json
 import logging
+import socket
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Optional, Union
 
 from flask import request
@@ -37,11 +39,10 @@ logger = logging.getLogger(__name__)
 sock = Sock()
 
 # --- Conexiones abiertas (estado de la capa de presentación) ---------------
-_lock = threading.Lock()
-_clients: set[Server] = set()
 
-
-@dataclass
+# eq=False: dos conexiones son distintas aunque tengan los mismos datos, y así
+# cada una se puede guardar en un conjunto.
+@dataclass(eq=False)
 class _Connection:
     """Lo que el servidor sabe de un navegador conectado."""
 
@@ -50,28 +51,38 @@ class _Connection:
     # dentro del bucle ya no hay una petición HTTP de la que deducirlo.
     lang: str
     identity: Optional[Identity] = None
+    # En este socket escriben varios hilos: el de esta conexión y los de quien
+    # difunda un mensaje. Sin turnos, dos tramas a la vez se mezclan (y la
+    # compresión pierde el orden) y el navegador las recibe rotas.
+    send_lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def send(self, payload: dict[str, object]) -> bool:
+        """Envía un objeto JSON. Devuelve False si la conexión ya está cerrada."""
+        try:
+            with self.send_lock:
+                self.ws.send(json.dumps(payload, ensure_ascii=False))
+        except (ConnectionClosed, OSError) as error:
+            logger.info("Conexión de chat perdida al enviar: %s", error)
+            return False
+        return True
 
 
-def _send(ws: Server, payload: dict[str, object]) -> bool:
-    """Envía un objeto JSON por un socket. Devuelve False si ya está cerrado."""
-    try:
-        ws.send(json.dumps(payload, ensure_ascii=False))
-    except (ConnectionClosed, OSError) as error:
-        logger.info("Conexión de chat perdida al enviar: %s", error)
-        return False
-    return True
+_lock = threading.Lock()
+_clients: set[_Connection] = set()
 
 
-def _broadcast(payload: dict[str, object], exclude: Optional[Server] = None) -> None:
+def _broadcast(
+    payload: dict[str, object], exclude: Optional[_Connection] = None
+) -> None:
     """Envía el mismo mensaje a todas las conexiones abiertas.
 
     Esto es lo que un endpoint HTTP normal no puede hacer: hablar con clientes
     que no han preguntado nada.
     """
     with _lock:
-        recipients = [ws for ws in _clients if ws is not exclude]
+        recipients = [client for client in _clients if client is not exclude]
 
-    dropped = [ws for ws in recipients if not _send(ws, payload)]
+    dropped = [client for client in recipients if not client.send(payload)]
 
     if dropped:
         with _lock:
@@ -90,10 +101,10 @@ def _join(connection: _Connection, data: dict[str, object]) -> None:
         text_field(data, "name"), text_field(data, "email")
     )
     connection.identity = identity
-    _send(connection.ws, {"type": "joined", "identity": identity})
+    connection.send({"type": "joined", "identity": identity})
     _broadcast(
         {"type": "system", "event": "join", "nickname": identity["nickname"]},
-        exclude=connection.ws,
+        exclude=connection,
     )
 
 
@@ -112,16 +123,16 @@ _HANDLERS: dict[str, Callable[[_Connection, dict[str, object]], None]] = {
 
 def _on_connect(connection: _Connection) -> None:
     with _lock:
-        _clients.add(connection.ws)
+        _clients.add(connection)
 
     # Quien entra recibe la conversación anterior, para no llegar a una sala
     # en blanco.
-    _send(connection.ws, {
+    connection.send({
         "type": "welcome",
         "history": chat_service.history(),
         "online": _online(),
     })
-    _broadcast({"type": "online", "count": _online()}, exclude=connection.ws)
+    _broadcast({"type": "online", "count": _online()}, exclude=connection)
 
 
 def _on_message(connection: _Connection, raw: Union[str, bytes]) -> None:
@@ -140,12 +151,12 @@ def _on_message(connection: _Connection, raw: Union[str, bytes]) -> None:
     except BusinessError as error:
         # El negocio lanza una clave; aquí se traduce, igual que en los
         # endpoints HTTP y con el mismo formato.
-        _send(connection.ws, {"type": "error", **error_payload(error, connection.lang)})
+        connection.send({"type": "error", **error_payload(error, connection.lang)})
 
 
 def _on_disconnect(connection: _Connection) -> None:
     with _lock:
-        _clients.discard(connection.ws)
+        _clients.discard(connection)
 
     if connection.identity is not None:
         _broadcast({
@@ -154,6 +165,24 @@ def _on_disconnect(connection: _Connection) -> None:
             "nickname": connection.identity["nickname"],
         })
     _broadcast({"type": "online", "count": _online()})
+
+
+def _finish_closing(ws: Server) -> None:
+    """Termina el cierre sin que el navegador reciba nada más.
+
+    Al volver `chat`, Werkzeug escribe una respuesta HTTP en el socket, como
+    con cualquier ruta. En un WebSocket ya cerrado esos bytes llegan como una
+    trama rota y el navegador registra «Invalid frame header». Por eso, si el
+    navegador ya cerró, se espera a que el hilo de simple-websocket conteste
+    con su trama de cierre y se cierra la escritura del socket: la respuesta
+    de Werkzeug ya no sale, y él lo trata como una conexión cortada.
+    """
+    if ws.connected:
+        return
+    ws.thread.join(timeout=1)
+    # OSError: el navegador ya había cortado la conexión.
+    with contextlib.suppress(OSError):
+        ws.sock.shutdown(socket.SHUT_WR)
 
 
 @sock.route("/ws/chat")
@@ -171,3 +200,4 @@ def chat(ws: Server) -> None:
             _on_message(connection, ws.receive())
     finally:
         _on_disconnect(connection)
+        _finish_closing(ws)

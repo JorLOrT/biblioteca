@@ -21,6 +21,7 @@ from typing import Optional, TypedDict
 # Las acciones que se cuentan. La presentación muestra cada una con la clave
 # de traducción `activity.<acción>`.
 BOOKS_CREATED = "books_created"
+BOOKS_UPDATED = "books_updated"
 BOOKS_DELETED = "books_deleted"
 LOANS = "loans"
 RETURNS = "returns"

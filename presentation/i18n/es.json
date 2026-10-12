@@ -157,5 +157,13 @@
   "msg.book_returned_late": "«{title}» devuelto con {days} días de retraso: multa de {fine}.",
   "msg.book_returned_late_one": "«{title}» devuelto con 1 día de retraso: multa de {fine}.",
   "msg.book_deleted_title": "«{title}» eliminado del catálogo.",
-  "loanform.due": "Plazo de {days} días: hay que devolverlo como máximo el {date}."
+  "loanform.due": "Plazo de {days} días: hay que devolverlo como máximo el {date}.",
+  "action.edit": "Editar",
+  "form.edit_book": "Editar «{title}»",
+  "form.save": "Guardar cambios",
+  "form.cancel_edit": "Cancelar",
+  "msg.book_updated": "«{title}» actualizado.",
+  "catalog.only_available": "Solo disponibles",
+  "empty.available": "Ahora mismo no hay ningún libro disponible.",
+  "activity.books_updated": "Libros editados"
 }

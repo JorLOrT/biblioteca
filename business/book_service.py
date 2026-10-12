@@ -73,9 +73,11 @@ class BookService:
             current = require_book(uow, book_id)
             edited = _validated_book(title, author, year, isbn or current.isbn or "")
             # `available` no se toca aquí: solo lo cambian los préstamos.
-            return uow.books.update(
+            updated = uow.books.update(
                 replace(edited, id=current.id, available=current.available)
             )
+        activity_service.record(activity_service.BOOKS_UPDATED)  # STATEFUL
+        return updated
 
     def delete_book(self, book_id: int) -> None:
         with unit_of_work() as uow:

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ t('app.title') }} — N-Capas</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
 </head>
 <body>
 
@@ -33,8 +34,9 @@
   <main>
     <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
 
-    <section class="card">
-      <h2>{{ t('form.add_book') }}</h2>
+    <!-- El mismo formulario agrega libros y edita el que se elija en el catálogo. -->
+    <section class="card" id="book-card">
+      <h2 id="book-form-heading">{{ t('form.add_book') }}</h2>
       <form id="book-form" class="validated" autocomplete="off" novalidate>
         <div class="field">
           <input type="text" id="book-title" data-rule="title" placeholder="{{ t('form.title') }}">
@@ -59,7 +61,8 @@
           <small class="hint">{{ t('hint.lookup') }}</small>
           <small class="field-error" hidden></small>
         </div>
-        <button type="submit">{{ t('form.add') }}</button>
+        <button type="submit" id="book-submit">{{ t('form.add') }}</button>
+        <button type="button" class="plain" id="book-cancel" hidden>{{ t('form.cancel_edit') }}</button>
       </form>
 
       <!-- Resultado de la consulta al servicio externo (Open Library) -->
@@ -67,7 +70,10 @@
     </section>
 
     <section class="card" id="catalog">
-      <h2>{{ t('catalog.heading') }}</h2>
+      <div class="card-heading">
+        <h2>{{ t('catalog.heading') }}</h2>
+        <label class="filter"><input type="checkbox" id="only-available"> {{ t('catalog.only_available') }}</label>
+      </div>
       <div class="table-wrap">
         <table>
           <thead>
