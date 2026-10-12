@@ -336,8 +336,8 @@ async function receive(loan) {
   });
   if (!confirmed) return;
   const returned = await api(`/api/loans/${loan.id}/return`, { method: "POST" });
-  notify(returnMessage(returned));
   await reload();
+  notify(returnMessage(returned));
 }
 
 // --- Eliminar un libro --------------------------------------------------------
@@ -351,8 +351,8 @@ async function removeBook(book) {
   });
   if (!confirmed) return;
   await api(`/api/books/${book.id}`, { method: "DELETE" });
-  notify(t("msg.book_deleted_title", { title: book.title }));
   await reload();
+  notify(t("msg.book_deleted_title", { title: book.title }));
 }
 
 // ===========================================================================
@@ -513,8 +513,8 @@ bookForm.addEventListener("submit", (event) => {
       ? await sendJson("PUT", `/api/books/${editingId}`, data)
       : await sendJson("POST", "/api/books", data);
     bookDialog.close();
-    notify(t(editing ? "msg.book_updated" : "msg.book_added", { title: book.title }));
     await reload();
+    notify(t(editing ? "msg.book_updated" : "msg.book_added", { title: book.title }));
   });
 });
 
@@ -625,10 +625,10 @@ document.getElementById("loan-form").addEventListener("submit", (event) => {
       reader_id: Number(loanReader.value),
     });
     loanDialog.close();
+    await reload();
     notify(t("msg.loan_created", {
       title: loan.book_title, borrower: loan.borrower, date: formatDate(loan.due_date),
     }));
-    await reload();
   });
 });
 
@@ -694,17 +694,17 @@ readerForm.addEventListener("submit", (event) => {
       ? await sendJson("PUT", `/api/readers/${editingReaderId}`, data)
       : await sendJson("POST", "/api/readers", { ...data, username: usernameInput.value });
     readerDialog.close();
+    await reload();
     notify(editing
       ? t("msg.reader_updated", { name: reader.name })
       : t("msg.reader_created", { name: reader.name, card: reader.card_number }));
-    await reload();
   });
 });
 
 async function renewCard(reader) {
   const renewed = await api(`/api/readers/${reader.id}/renew`, { method: "POST" });
-  notify(t("msg.card_renewed", { name: renewed.name, date: formatDate(renewed.card_expires) }));
   await reload();
+  notify(t("msg.card_renewed", { name: renewed.name, date: formatDate(renewed.card_expires) }));
 }
 
 document.getElementById("add-reader").addEventListener("click", () => openReaderDialog());
@@ -732,8 +732,8 @@ document.addEventListener("click", (event) => {
 
 document.getElementById("activity-reset").addEventListener("click", () => runAction(async () => {
   await api("/api/activity/reset", { method: "POST" });
-  notify(t("msg.activity_reset"));
   await reload();
+  notify(t("msg.activity_reset"));
 }));
 
 // --- Arranque -------------------------------------------------------------------

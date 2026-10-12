@@ -1,0 +1,27 @@
+# Despliegue con Docker Compose (en Dokploy, un servicio de tipo «Compose»).
+#
+# Las variables se escriben en la pestaña Environment de Dokploy, que las guarda
+# en un .env junto a este archivo; aquí se leen con ${...}. El dominio se
+# configura en la pestaña Domains, con el servicio «biblioteca» y el puerto
+# 5001: Dokploy añade solo las etiquetas de Traefik y la red.
+services:
+  biblioteca:
+    build: .
+    restart: unless-stopped
+    environment:
+      # Obligatoria: sin ella, el despliegue se detiene aquí con este mensaje.
+      SECRET_KEY: ${SECRET_KEY:?Falta la variable SECRET_KEY}
+      # 1 solo si el dominio va con HTTPS: la cookie de sesión deja de viajar por HTTP.
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-0}
+      TZ: ${TZ:-America/Lima}
+    volumes:
+      # Volumen con nombre: la base de datos sobrevive a cada despliegue y
+      # Dokploy puede respaldarlo (Volume Backups).
+      - biblioteca-datos:/data
+    # Sin `ports`: el puerto no se abre en el servidor. Traefik llega al
+    # contenedor por la red interna de Docker.
+    expose:
+      - "5001"
+
+volumes:
+  biblioteca-datos:

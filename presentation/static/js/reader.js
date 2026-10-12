@@ -199,8 +199,8 @@ const ACTIONS = {
   async wish(id) {
     const { title } = findBook(id);
     const result = await api(`/api/wishlist/${id}`, { method: "POST" });
-    notify(t(result.in_wishlist ? "msg.wishlist_added" : "msg.wishlist_removed", { title }));
     await reload();
+    notify(t(result.in_wishlist ? "msg.wishlist_added" : "msg.wishlist_removed", { title }));
   },
   // Pedir un libro es escribirle al bibliotecario: el mensaje queda listo
   // en el chat para revisarlo y enviarlo.
@@ -218,8 +218,8 @@ document.addEventListener("click", (event) => {
 
 document.getElementById("wishlist-clear").addEventListener("click", () => runAction(async () => {
   await api("/api/wishlist", { method: "DELETE" });
-  notify(t("msg.wishlist_cleared"));
   await reload();
+  notify(t("msg.wishlist_cleared"));
 }));
 
 // ===========================================================================

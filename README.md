@@ -28,20 +28,23 @@ estas cuentas de prueba (la pantalla de inicio de sesión las muestra para entra
 La `SECRET_KEY` firma la cookie de sesión. No hay una por defecto escrita en el código: si
 falta, la aplicación se niega a arrancar.
 
-Con Docker:
+Con Docker (la imagen usa Gunicorn y guarda la base de datos en `/data`):
 
 ```bash
 docker build -t biblioteca .
-docker run -p 5001:5001 -e SECRET_KEY="$SECRET_KEY" biblioteca
+docker run -p 5001:5001 -e SECRET_KEY="$SECRET_KEY" -v biblioteca-datos:/data biblioteca
 ```
 
 | Variable | Por defecto | Para qué |
 |---|---|---|
 | `SECRET_KEY` | — (obligatoria) | Firmar la cookie de sesión |
-| `HOST` | `127.0.0.1` | Interfaz donde escucha. El Dockerfile pone `0.0.0.0` |
+| `HOST` | `127.0.0.1` | Interfaz donde escucha `python app.py`. En Docker, `0.0.0.0` |
 | `PORT` | `5001` | En macOS el 5000 lo ocupa AirPlay Receiver |
 | `FLASK_DEBUG` | apagado | Con `1`, recarga automática y depurador. Nunca en producción |
-| `LIBRARY_DB` | `library.db` | Otra base de datos, por ejemplo para pruebas |
+| `LIBRARY_DB` | `library.db` | Otra base de datos. En Docker, `/data/library.db` |
+| `SESSION_COOKIE_SECURE` | apagado | Con `1`, la cookie de sesión solo viaja por HTTPS |
+| `TZ` | `America/Lima` (Docker) | Zona horaria de las fechas de préstamo, vencimientos y multas |
+| `GUNICORN_THREADS` | `100` | Conexiones a la vez en Docker; cada chat abierto ocupa una |
 
 ---
 
@@ -207,7 +210,9 @@ Aparte de esta API, el navegador abre conexiones que no siguen el ciclo petició
 ```
 App-N-Capas/
 ├── app.py                      # Ensambla las capas y arranca Flask
-├── requirements.txt · Dockerfile
+├── requirements.txt
+├── Dockerfile · docker-compose.yml · .env.example   # Despliegue (Dokploy)
+├── gunicorn.conf.py            # Servidor de producción: un proceso con hilos
 │
 ├── entities/                   # ENTIDADES
 │   └── book.py · loan.py · user.py

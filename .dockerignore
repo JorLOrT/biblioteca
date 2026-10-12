@@ -10,6 +10,11 @@ venv/
 *.db
 *.sqlite3
 
+# Variables de entorno (la SECRET_KEY): Dokploy escribe un .env junto al
+# docker-compose.yml, y no debe acabar dentro de la imagen.
+.env
+.env.*
+
 # Metadatos y documentación que la imagen no necesita
 .git/
 .gitignore

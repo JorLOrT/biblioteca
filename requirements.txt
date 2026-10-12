@@ -1,2 +1,4 @@
 Flask==3.0.3
 flask-sock==0.7.0
+# Servidor de producción (lo usa el Dockerfile). En local basta `python app.py`.
+gunicorn==23.0.0

@@ -7,10 +7,14 @@ una petición siempre baja en el mismo orden:
     Navegador -> Presentación -> Negocio -> Acceso a Datos -> SQLite
 
 La configuración llega por variables de entorno, nunca escrita en el código:
-  SECRET_KEY   obligatoria: firma la cookie de sesión.
-  HOST, PORT   dónde escucha el servidor (127.0.0.1:5001 por defecto).
-  FLASK_DEBUG  con "1" activa el modo de depuración. Nunca en producción.
-  LIBRARY_DB   otra base de datos (la lee `data_access.database`).
+  SECRET_KEY             obligatoria: firma la cookie de sesión.
+  HOST, PORT             dónde escucha el servidor (127.0.0.1:5001 por defecto).
+  FLASK_DEBUG            con "1" activa el modo de depuración. Nunca en producción.
+  LIBRARY_DB             otra base de datos (la lee `data_access.database`).
+  SESSION_COOKIE_SECURE  con "1", la cookie de sesión solo viaja por HTTPS.
+
+En producción (Docker) no se usa `python app.py`: Gunicorn llama a
+`create_app()` con la configuración de `gunicorn.conf.py`.
 """
 
 import os
@@ -76,6 +80,10 @@ def create_app() -> Flask:
     # así que otra página no puede prestar ni borrar nada en nombre de quien
     # tenga la sesión abierta.
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    # Detrás de HTTPS (un dominio en Dokploy), la cookie solo viaja cifrada.
+    # Se activa a mano: con HTTP sin cifrar, una cookie «Secure» no llega y no
+    # se podría iniciar sesión.
+    app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE") == "1"
 
     init_db()
     ensure_demo_accounts()
