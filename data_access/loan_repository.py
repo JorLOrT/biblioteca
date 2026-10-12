@@ -5,9 +5,9 @@ from typing import Optional
 
 from entities.loan import Loan
 
-# El JOIN trae el título del libro para poder mostrarlo sin una segunda consulta.
+# El JOIN trae el título y el ISBN del libro para mostrarlos sin otra consulta.
 SELECT_LOAN = """
-SELECT loans.*, books.title AS book_title
+SELECT loans.*, books.title AS book_title, books.isbn AS book_isbn
 FROM loans
 JOIN books ON books.id = loans.book_id
 """
@@ -32,6 +32,7 @@ class LoanRepository:
             borrower_phone=row["borrower_phone"],
             return_date=row["return_date"],
             book_title=row["book_title"],
+            book_isbn=row["book_isbn"],
         )
 
     def _get_one(self, condition: str, params: tuple[int]) -> Optional[Loan]:

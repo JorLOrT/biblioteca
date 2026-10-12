@@ -13,6 +13,12 @@
       <div>
         <h1>📚 {{ t('app.title') }}</h1>
         <p class="subtitle">{{ t('app.subtitle') }}</p>
+        <nav class="nav">
+          <a href="#catalog">{{ t('nav.catalog') }}</a>
+          <a href="#loans">{{ t('nav.loans') }}</a>
+          <a href="#state">{{ t('nav.state') }}</a>
+          <a href="#chat">{{ t('nav.chat') }}</a>
+        </nav>
       </div>
       <div class="language">
         <label for="language-select">{{ t('lang.label') }}</label>
@@ -25,7 +31,7 @@
   </header>
 
   <main>
-    <div id="notice" class="notice" hidden></div>
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
 
     <section class="card">
       <h2>{{ t('form.add_book') }}</h2>
@@ -60,44 +66,62 @@
       <div id="lookup-result" class="lookup-result" hidden></div>
     </section>
 
-    <section class="card">
+    <section class="card" id="catalog">
       <h2>{{ t('catalog.heading') }}</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>{{ t('table.id') }}</th>
-            <th>{{ t('table.title') }}</th>
-            <th>{{ t('table.author') }}</th>
-            <th>{{ t('table.year') }}</th>
-            <th>{{ t('table.isbn') }}</th>
-            <th>{{ t('table.status') }}</th>
-            <th>{{ t('table.actions') }}</th>
-          </tr>
-        </thead>
-        <tbody id="book-rows"></tbody>
-      </table>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ t('table.book') }}</th>
+              <th>{{ t('table.status') }}</th>
+              <th>{{ t('table.actions') }}</th>
+            </tr>
+          </thead>
+          <tbody id="book-rows"></tbody>
+        </table>
+      </div>
     </section>
 
-    <section class="card">
+    <section class="card" id="loans">
       <h2>{{ t('loans.heading') }}</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>{{ t('table.id') }}</th>
-            <th>{{ t('table.book') }}</th>
-            <th>{{ t('table.borrower') }}</th>
-            <th>{{ t('table.loan_date') }}</th>
-            <th>{{ t('table.due_date') }}</th>
-            <th>{{ t('table.return_date') }}</th>
-            <th>{{ t('table.actions') }}</th>
-          </tr>
-        </thead>
-        <tbody id="loan-rows"></tbody>
-      </table>
+
+      <h3>{{ t('loans.active') }} <span class="count" id="active-count"></span></h3>
+      <div class="table-wrap">
+        <table class="stack">
+          <thead>
+            <tr>
+              <th>{{ t('table.book') }}</th>
+              <th>{{ t('table.borrower') }}</th>
+              <th>{{ t('table.loan_date') }}</th>
+              <th>{{ t('table.due_date') }}</th>
+              <th>{{ t('table.actions') }}</th>
+            </tr>
+          </thead>
+          <tbody id="loan-rows"></tbody>
+        </table>
+      </div>
+
+      <details class="history" open>
+        <summary>{{ t('loans.history') }} <span class="count" id="history-count"></span></summary>
+        <div class="table-wrap">
+          <table class="stack">
+            <thead>
+              <tr>
+                <th>{{ t('table.book') }}</th>
+                <th>{{ t('table.borrower') }}</th>
+                <th>{{ t('table.loan_date') }}</th>
+                <th>{{ t('table.return_date') }}</th>
+                <th>{{ t('table.result') }}</th>
+              </tr>
+            </thead>
+            <tbody id="history-rows"></tbody>
+          </table>
+        </div>
+      </details>
     </section>
 
     <!-- ================= FUNCIONES STATELESS ================= -->
-    <section class="card featured stateless">
+    <section class="card featured stateless" id="state">
       <h2>🧮 {{ t('stateless.heading') }}</h2>
       <p class="note">{{ t('stateless.note') }}</p>
 
@@ -133,7 +157,7 @@
     </section>
 
     <!-- ================= CHAT POR WEBSOCKET ================= -->
-    <section class="card featured chat">
+    <section class="card featured chat" id="chat">
       <div class="chat-header">
         <h2>💬 {{ t('chat.heading') }}</h2>
         <span id="chat-status" class="connection-status">{{ t('chat.connecting') }}</span>
@@ -181,7 +205,8 @@
   <div id="loan-overlay" class="overlay" hidden>
     <div class="dialog">
       <h2>{{ t('loanform.heading') }}</h2>
-      <p class="note" id="loan-book"></p>
+      <p class="loan-book" id="loan-book"></p>
+      <p class="note" id="loan-due"></p>
 
       <form id="loan-form" class="validated vertical" autocomplete="off" novalidate>
         <div class="field">

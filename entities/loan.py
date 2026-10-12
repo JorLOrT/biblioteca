@@ -21,9 +21,10 @@ class Loan:
     borrower_phone: Optional[str] = None
     return_date: Optional[str] = None
 
-    # Campos calculados: no están en la tabla `loans`. El título lo trae el
-    # JOIN con `books`; el vencimiento y la multa los calcula la capa de negocio.
+    # Campos calculados: no están en la tabla `loans`. El título y el ISBN los
+    # trae el JOIN con `books`; el vencimiento y la multa, la capa de negocio.
     book_title: Optional[str] = None
+    book_isbn: Optional[str] = None
     due_date: Optional[str] = None
     days_late: int = 0
     fine: float = 0.0
@@ -38,6 +39,7 @@ class Loan:
             "id": self.id,
             "book_id": self.book_id,
             "book_title": self.book_title,
+            "book_isbn": self.book_isbn,
             "borrower": self.borrower,
             "borrower_dni": self.borrower_dni,
             "borrower_email": self.borrower_email,

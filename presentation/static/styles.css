@@ -11,6 +11,8 @@
 
 * { box-sizing: border-box; }
 
+html { scroll-behavior: smooth; }
+
 /* El atributo `hidden` solo aporta `display: none` desde la hoja del
    navegador, así que cualquier `display` explícito lo pisa. Varios elementos
    de esta página son flex, de modo que sin esta regla seguirían viéndose. */
@@ -69,6 +71,24 @@ header h1 { margin: 0; font-size: 1.6rem; }
   color: #a8b3bf;
   font-size: .85rem;
 }
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem 1.1rem;
+  margin-top: .75rem;
+}
+
+.nav a {
+  color: #dbe2e8;
+  font-size: .85rem;
+  text-decoration: none;
+}
+
+.nav a:hover { color: #fff; text-decoration: underline; }
+
+/* Que la navegación no deje el título de la sección pegado al borde. */
+section[id] { scroll-margin-top: 1rem; }
 
 main {
   max-width: 960px;
@@ -160,8 +180,37 @@ td.actions { white-space: nowrap; }
   font-weight: 600;
 }
 
-.badge.available { background: #e3f5ec; color: var(--green); }
-.badge.borrowed   { background: #fdeaea; color: var(--red); }
+.badge.available,
+.badge.on-time    { background: #e3f5ec; color: var(--green); }
+.badge.borrowed,
+.badge.late       { background: #fdeaea; color: var(--red); }
+
+/* Celda de un libro: el título y, debajo, autor, año e ISBN. */
+.book-title { font-weight: 600; }
+
+.book-meta {
+  display: block;
+  margin-top: .1rem;
+  font-size: .8rem;
+  color: var(--muted);
+}
+
+.isbn {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-color);
+}
+
+/* Una línea de detalle bajo un estado o una fecha. */
+.detail {
+  display: block;
+  margin-top: .2rem;
+  font-size: .78rem;
+  color: var(--muted);
+}
+
+.detail.late { color: var(--red); font-weight: 600; }
+
+.table-wrap { overflow-x: auto; }
 
 .empty {
   color: var(--muted);
@@ -169,11 +218,20 @@ td.actions { white-space: nowrap; }
   padding: 1rem .4rem;
 }
 
+/* El aviso flota arriba: así se ve aunque la acción se haya hecho al final de
+   la página, por ejemplo al devolver un libro desde la tabla de préstamos. */
 .notice {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  width: min(560px, calc(100% - 2rem));
   padding: .75rem 1rem;
   border-radius: 6px;
-  margin-bottom: 1.25rem;
   font-size: .9rem;
+  box-shadow: 0 8px 24px rgba(31, 41, 51, .18);
+  cursor: pointer;
 }
 
 .notice.error { background: #fdeaea; color: var(--red); border: 1px solid #f5c6c2; }
@@ -267,6 +325,31 @@ form:not(.validated) label input {
   font-size: .8rem;
 }
 
+.chips .state {
+  margin-left: .35rem;
+  font-size: .7rem;
+  color: var(--green);
+}
+
+.chips .state.borrowed { color: var(--red); }
+
+/* --- Préstamos: activos e historial --------------------------------------- */
+
+.card h3 .count,
+.history summary .count {
+  font-weight: normal;
+  color: var(--muted);
+}
+
+.history { margin-top: 1.5rem; }
+
+.history summary {
+  cursor: pointer;
+  margin-bottom: .5rem;
+  font-size: .95rem;
+  font-weight: 600;
+}
+
 .footnote {
   margin: .4rem 0 .8rem;
   font-size: .78rem;
@@ -339,12 +422,6 @@ input.valid { border-color: #8fcfae; }
 /* El botón de un formulario validado se alinea con los campos, no con las pistas. */
 form.validated > button[type="submit"] { margin-top: 1.15rem; }
 
-td.isbn {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: .82rem;
-  color: var(--muted);
-}
-
 /* --- Cuadro de diálogo del préstamo -------------------------------------- */
 
 .overlay {
@@ -367,6 +444,11 @@ td.isbn {
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 18px 50px rgba(0, 0, 0, .28);
+}
+
+.loan-book {
+  margin: 0 0 .25rem;
+  font-weight: 600;
 }
 
 .dialog h2 {
@@ -573,4 +655,31 @@ td.isbn {
 button:disabled {
   opacity: .5;
   cursor: not-allowed;
+}
+
+/* --- Pantallas estrechas -------------------------------------------------- */
+
+@media (max-width: 640px) {
+  /* Los botones de una fila se apilan en vez de ensanchar la tabla. */
+  td.actions { white-space: normal; }
+  td.actions button { margin: .15rem 0; }
+  th, td { padding-left: .3rem; padding-right: .3rem; }
+
+  /* Los préstamos tienen demasiadas columnas para un móvil: cada uno pasa a
+     ser una ficha, con el nombre de la columna encima de cada dato. */
+  table.stack thead { display: none; }
+  table.stack,
+  table.stack tbody,
+  table.stack tr,
+  table.stack td { display: block; width: 100%; }
+  table.stack tr { padding: .5rem 0; border-bottom: 1px solid var(--border); }
+  table.stack td { border: none; padding: .2rem .3rem; }
+  table.stack td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: .68rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--muted);
+  }
 }

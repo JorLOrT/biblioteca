@@ -5,6 +5,7 @@ const notice = document.getElementById("notice");
 const bookForm = document.getElementById("book-form");
 const bookRows = document.getElementById("book-rows");
 const loanRows = document.getElementById("loan-rows");
+const historyRows = document.getElementById("history-rows");
 const activityPanel = document.getElementById("activity");
 const wishlistPanel = document.getElementById("wishlist");
 const calcForm = document.getElementById("calc-form");
@@ -12,9 +13,11 @@ const calcResult = document.getElementById("calc-result");
 const lookupResult = document.getElementById("lookup-result");
 
 let books = [];     // último catálogo recibido, para buscar un libro por su id
+let loans = [];     // último listado de préstamos, activos e historial
 let wishlist = [];  // copia local de la lista de deseos que guarda la sesión
 let messages = {};  // catálogo de traducciones que entrega /api/i18n
 let rules = {};     // expresiones regulares que entrega /api/validation-rules
+let noticeTimer = null;
 
 /** Traduce una clave sustituyendo sus parámetros: t("wishlist.count", {count: 2, max: 5}) */
 function t(key, params = {}) {
@@ -25,15 +28,27 @@ function t(key, params = {}) {
   return text;
 }
 
+/** Como t(), pero con singular: usa «<clave>_one» cuando `days` es 1. */
+function tDays(key, days, params = {}) {
+  const singular = days === 1 && messages[key + "_one"] !== undefined;
+  return t(singular ? key + "_one" : key, { ...params, days });
+}
+
 function showNotice(text, kind) {
   notice.textContent = text;
   notice.className = "notice " + kind;
   notice.hidden = false;
+  clearTimeout(noticeTimer);
+  // Los avisos de éxito se van solos; los errores se quedan hasta pulsarlos.
+  if (kind === "ok") noticeTimer = setTimeout(clearNotice, 6000);
 }
 
 function clearNotice() {
+  clearTimeout(noticeTimer);
   notice.hidden = true;
 }
+
+notice.addEventListener("click", clearNotice);
 
 /** Llama a la API y convierte el {error} del servidor en una excepción.
  *  Si la respuesta ni siquiera es JSON (un 500 en HTML, por ejemplo) se usa el
@@ -67,8 +82,8 @@ async function runAction(action) {
 }
 
 /** Avisa de que la acción salió bien y vuelve a pintar los datos. */
-async function succeed(messageKey) {
-  showNotice(t(messageKey), "ok");
+async function succeed(text) {
+  showNotice(text, "ok");
   await reload();
 }
 
@@ -78,6 +93,38 @@ const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'
  *  también sea seguro dentro de un atributo (`alt="..."`). */
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
+}
+
+const money = (amount) => t("currency", { amount: Number(amount).toFixed(2) });
+
+// --- Fechas ----------------------------------------------------------------
+// El servidor habla en AAAA-MM-DD; al usuario se le muestran en el formato de
+// su idioma, el mismo que usan los campos de fecha del navegador.
+
+const pad = (n) => String(n).padStart(2, "0");
+
+/** Hoy en AAAA-MM-DD, en la hora local. (toISOString usaría UTC, y en Perú a
+ *  partir de las 19:00 ya sería mañana.) */
+function todayIso() {
+  const now = new Date();
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+function formatDate(iso) {
+  if (!iso) return "—";
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Intl.DateTimeFormat(document.documentElement.lang, {
+    day: "2-digit", month: "2-digit", year: "numeric",
+  }).format(new Date(year, month - 1, day));
+}
+
+/** Días que faltan desde hoy hasta una fecha AAAA-MM-DD (negativo si ya pasó). */
+function daysUntil(iso) {
+  const toUtc = (text) => {
+    const [year, month, day] = text.split("-").map(Number);
+    return Date.UTC(year, month - 1, day);
+  };
+  return Math.round((toUtc(iso) - toUtc(todayIso())) / 86400000);
 }
 
 // ===========================================================================
@@ -141,68 +188,136 @@ function resetForm(form) {
   });
 }
 
-const money = (amount) => t("currency", { amount: Number(amount).toFixed(2) });
+// --- Catálogo --------------------------------------------------------------
 
-// --- Pintado de las tablas -------------------------------------------------
+const bookById = (id) => books.find((book) => book.id === id);
+const activeLoanFor = (bookId) => loans.find((loan) => loan.is_active && loan.book_id === bookId);
+
+/** Título, y debajo autor, año e ISBN: lo que identifica a un libro. */
+function bookCell(title, isbn, meta = "") {
+  return `
+    <span class="book-title">${escapeHtml(title)}</span>
+    ${meta ? `<span class="book-meta">${meta}</span>` : ""}
+    <span class="book-meta isbn">ISBN ${isbn ? escapeHtml(isbn) : "—"}</span>`;
+}
+
+/** Disponible, o prestado con a quién y hasta cuándo. */
+function bookStatus(book, loan) {
+  if (book.available) {
+    return `<span class="badge available">${t("status.available")}</span>`;
+  }
+  const detail = loan
+    ? `<span class="detail ${loan.days_late > 0 ? "late" : ""}">${
+        t(loan.days_late > 0 ? "catalog.lent_overdue" : "catalog.lent_detail", {
+          borrower: escapeHtml(loan.borrower),
+          date: formatDate(loan.due_date),
+        })}</span>`
+    : "";
+  return `<span class="badge borrowed">${t("status.borrowed")}</span>${detail}`;
+}
+
+function bookRow(book) {
+  const wished = wishlist.includes(book.id);
+  const loan = activeLoanFor(book.id);
+  const meta = escapeHtml(book.author) + (book.year ? ` · ${book.year}` : "");
+
+  // Un libro disponible se presta; uno prestado se devuelve desde aquí mismo.
+  const mainAction = loan
+    ? `<button class="secondary" data-action="return" data-id="${loan.id}">${t("action.return")}</button>`
+    : book.available
+      ? `<button data-action="lend" data-id="${book.id}">${t("action.lend")}</button>`
+      : "";
+
+  // Un libro prestado no se puede eliminar: el botón lo dice antes de intentarlo.
+  const blocked = book.available
+    ? ""
+    : `disabled title="${escapeHtml(t("action.delete_blocked"))}"`;
+
+  return `
+    <tr>
+      <td>${bookCell(book.title, book.isbn, meta)}</td>
+      <td>${bookStatus(book, loan)}</td>
+      <td class="actions">
+        <button class="star ${wished ? "active" : ""}" data-action="wish" data-id="${book.id}"
+                title="${escapeHtml(t(wished ? "action.wishlist_remove" : "action.wishlist_add"))}">
+          ${wished ? "★" : "☆"}
+        </button>
+        ${mainAction}
+        <button class="danger" data-action="delete" data-id="${book.id}" ${blocked}>${t("action.delete")}</button>
+      </td>
+    </tr>
+  `;
+}
 
 function renderBooks(list) {
   books = list;
-  if (list.length === 0) {
-    bookRows.innerHTML = `<tr><td colspan="7" class="empty">${t("empty.books")}</td></tr>`;
-    return;
-  }
-
-  bookRows.innerHTML = list.map((book) => {
-    const wished = wishlist.includes(book.id);
-    return `
-      <tr>
-        <td>${book.id}</td>
-        <td>${escapeHtml(book.title)}</td>
-        <td>${escapeHtml(book.author)}</td>
-        <td>${book.year ?? ""}</td>
-        <td class="isbn">${book.isbn ? escapeHtml(book.isbn) : "—"}</td>
-        <td>
-          <span class="badge ${book.available ? "available" : "borrowed"}">
-            ${t(book.available ? "status.available" : "status.borrowed")}
-          </span>
-        </td>
-        <td class="actions">
-          <button class="star ${wished ? "active" : ""}" data-action="wish" data-id="${book.id}"
-                  title="${escapeHtml(t(wished ? "action.wishlist_remove" : "action.wishlist_add"))}">
-            ${wished ? "★" : "☆"}
-          </button>
-          ${book.available ? `<button data-action="lend" data-id="${book.id}">${t("action.lend")}</button>` : ""}
-          <button class="danger" data-action="delete" data-id="${book.id}">${t("action.delete")}</button>
-        </td>
-      </tr>
-    `;
-  }).join("");
+  bookRows.innerHTML = list.length
+    ? list.map(bookRow).join("")
+    : `<tr><td colspan="3" class="empty">${t("empty.books")}</td></tr>`;
 }
 
-function renderLoans(loans) {
-  if (loans.length === 0) {
-    loanRows.innerHTML = `<tr><td colspan="7" class="empty">${t("empty.loans")}</td></tr>`;
-    return;
-  }
+// --- Préstamos: activos e historial ----------------------------------------
 
-  loanRows.innerHTML = loans.map((loan) => `
-    <tr class="${loan.is_active && loan.days_late > 0 ? "overdue" : ""}">
-      <td>${loan.id}</td>
-      <td>${escapeHtml(loan.book_title)}</td>
-      <td>${escapeHtml(loan.borrower)}</td>
-      <td>${loan.loan_date}</td>
-      <td>
-        ${loan.due_date}
-        ${loan.days_late > 0
-          ? `<span class="badge borrowed">${loan.days_late} d · ${money(loan.fine)}</span>`
-          : ""}
-      </td>
-      <td>${loan.return_date || "—"}</td>
+/** El nombre y, debajo, cómo localizar a quien tiene el libro. */
+function borrowerCell(loan) {
+  const contact = [loan.borrower_phone, loan.borrower_email].filter(Boolean);
+  return escapeHtml(loan.borrower)
+    + (contact.length ? `<span class="book-meta">${contact.map(escapeHtml).join(" · ")}</span>` : "");
+}
+
+/** Cuánto le queda a un préstamo activo, o cuánto lleva de retraso. */
+function dueStatus(loan) {
+  if (loan.days_late > 0) {
+    return `<span class="detail late">${
+      tDays("loan.overdue", loan.days_late, { fine: money(loan.fine) })}</span>`;
+  }
+  const left = Math.max(0, daysUntil(loan.due_date));
+  return `<span class="detail">${left === 0 ? t("loan.due_today") : tDays("loan.due_in", left)}</span>`;
+}
+
+function activeLoanRow(loan) {
+  return `
+    <tr class="${loan.days_late > 0 ? "overdue" : ""}">
+      <td>${bookCell(loan.book_title, loan.book_isbn)}</td>
+      <td data-label="${t("table.borrower")}">${borrowerCell(loan)}</td>
+      <td data-label="${t("table.loan_date")}">${formatDate(loan.loan_date)}</td>
+      <td data-label="${t("table.due_date")}">${formatDate(loan.due_date)}${dueStatus(loan)}</td>
       <td class="actions">
-        ${loan.is_active ? `<button class="secondary" data-action="return" data-id="${loan.id}">${t("action.return")}</button>` : ""}
+        <button class="secondary" data-action="return" data-id="${loan.id}">${t("action.return")}</button>
       </td>
     </tr>
-  `).join("");
+  `;
+}
+
+function returnedLoanRow(loan) {
+  const result = loan.days_late > 0
+    ? `<span class="badge late">${tDays("loan.late", loan.days_late, { fine: money(loan.fine) })}</span>`
+    : `<span class="badge on-time">${t("loan.on_time")}</span>`;
+  return `
+    <tr>
+      <td>${bookCell(loan.book_title, loan.book_isbn)}</td>
+      <td data-label="${t("table.borrower")}">${escapeHtml(loan.borrower)}</td>
+      <td data-label="${t("table.loan_date")}">${formatDate(loan.loan_date)}</td>
+      <td data-label="${t("table.return_date")}">${formatDate(loan.return_date)}</td>
+      <td data-label="${t("table.result")}">${result}</td>
+    </tr>
+  `;
+}
+
+function renderLoans(list) {
+  loans = list;
+  const active = list.filter((loan) => loan.is_active);
+  const returned = list.filter((loan) => !loan.is_active);
+
+  document.getElementById("active-count").textContent = `(${active.length})`;
+  document.getElementById("history-count").textContent = `(${returned.length})`;
+
+  loanRows.innerHTML = active.length
+    ? active.map(activeLoanRow).join("")
+    : `<tr><td colspan="5" class="empty">${t("loans.empty_active")}</td></tr>`;
+  historyRows.innerHTML = returned.length
+    ? returned.map(returnedLoanRow).join("")
+    : `<tr><td colspan="5" class="empty">${t("loans.empty_history")}</td></tr>`;
 }
 
 // --- Paneles con estado ----------------------------------------------------
@@ -233,10 +348,12 @@ function renderActivity(activity) {
 function renderWishlist(data) {
   wishlist = data.book_ids;
 
+  // Cada libro de la lista dice si ahora mismo se puede pedir prestado.
   wishlistPanel.innerHTML = data.books.length === 0
     ? `<p class="empty">${t("wishlist.empty")}</p>`
     : `<ul class="chips">${data.books.map((book) =>
-        `<li>${escapeHtml(book.title)}</li>`).join("")}</ul>`;
+        `<li>${escapeHtml(book.title)}<span class="state ${book.available ? "" : "borrowed"}">${
+          t(book.available ? "status.available" : "status.borrowed")}</span></li>`).join("")}</ul>`;
 
   wishlistPanel.innerHTML += `<p class="footnote">${
     t("wishlist.count", { count: data.books.length, max: data.max })
@@ -250,14 +367,15 @@ async function reload() {
   // qué libros están marcados para pintar la estrella.
   renderWishlist(await api("/api/wishlist"));
 
-  const [bookList, loans, activity] = await Promise.all([
+  const [bookList, loanList, activity] = await Promise.all([
     api("/api/books"),
     api("/api/loans"),
     api("/api/activity"),
   ]);
 
+  // Los préstamos van antes: el catálogo dice a quién está prestado cada libro.
+  renderLoans(loanList);
   renderBooks(bookList);
-  renderLoans(loans);
   renderActivity(activity);
 }
 
@@ -269,7 +387,7 @@ bookForm.addEventListener("submit", (event) => {
     // Primera barrera: los regex en el navegador. Si algo falla no se envía nada.
     if (!formIsValid(bookForm)) return;
 
-    await postJson("/api/books", {
+    const book = await postJson("/api/books", {
       title: document.getElementById("book-title").value,
       author: document.getElementById("book-author").value,
       year: document.getElementById("book-year").value,
@@ -277,7 +395,7 @@ bookForm.addEventListener("submit", (event) => {
     });
     resetForm(bookForm);
     lookupResult.hidden = true;
-    await succeed("msg.book_added");
+    await succeed(t("msg.book_added", { title: book.title }));
   });
 });
 
@@ -295,9 +413,9 @@ calcForm.addEventListener("submit", (event) => {
       + new URLSearchParams({ loan_date: loanDate, days }));
 
     let html = t("calc.result", {
-      loan_date: due.loan_date,
+      loan_date: formatDate(due.loan_date),
       days: due.days,
-      due_date: due.due_date,
+      due_date: formatDate(due.due_date),
     });
 
     if (returnDate) {
@@ -305,12 +423,12 @@ calcForm.addEventListener("submit", (event) => {
         + new URLSearchParams({ due_date: due.due_date, reference_date: returnDate }));
       html += "<br>" + (penalty.days_late > 0
         ? t("calc.late", {
-            date: returnDate,
+            date: formatDate(returnDate),
             days: penalty.days_late,
             fine: money(penalty.fine),
             rate: money(penalty.daily_rate),
           })
-        : t("calc.ontime", { date: returnDate }));
+        : t("calc.ontime", { date: formatDate(returnDate) }));
     }
 
     calcResult.innerHTML = html;
@@ -320,32 +438,56 @@ calcForm.addEventListener("submit", (event) => {
 
 document.getElementById("activity-reset").addEventListener("click", () => runAction(async () => {
   await api("/api/activity/reset", { method: "POST" });
-  await succeed("msg.activity_reset");
+  await succeed(t("msg.activity_reset"));
 }));
 
 document.getElementById("wishlist-clear").addEventListener("click", () => runAction(async () => {
   await api("/api/wishlist", { method: "DELETE" });
-  await succeed("msg.wishlist_cleared");
+  await succeed(t("msg.wishlist_cleared"));
 }));
+
+/** Pregunta antes de devolver: qué libro, de quién, y si lleva multa. */
+function confirmReturn(loan) {
+  let question = t("confirm.return", {
+    title: loan.book_title,
+    isbn: loan.book_isbn || "—",
+    borrower: loan.borrower,
+  });
+  if (loan.days_late > 0) {
+    question += "\n" + tDays("confirm.return_late", loan.days_late, { fine: money(loan.fine) });
+  }
+  return confirm(question);
+}
+
+/** Lo que pasó al devolver: a tiempo, o con cuántos días de retraso y qué multa. */
+function returnMessage(loan) {
+  return loan.days_late > 0
+    ? tDays("msg.book_returned_late", loan.days_late, { title: loan.book_title, fine: money(loan.fine) })
+    : t("msg.book_returned", { title: loan.book_title });
+}
 
 // Botones de las tablas. Se pintan de nuevo en cada recarga, así que se
 // escucha en el documento y cada botón dice qué hace con `data-action`.
 const ROW_ACTIONS = {
   async wish(bookId) {
+    const { title } = bookById(bookId);
     const result = await api(`/api/wishlist/${bookId}`, { method: "POST" });
-    await succeed(result.in_wishlist ? "msg.wishlist_added" : "msg.wishlist_removed");
+    await succeed(t(result.in_wishlist ? "msg.wishlist_added" : "msg.wishlist_removed", { title }));
   },
   lend(bookId) {
-    openLoanForm(bookId);  // el préstamo se registra al enviar el formulario
+    return openLoanForm(bookId);  // el préstamo se registra al enviar el formulario
   },
   async return(loanId) {
-    await api(`/api/loans/${loanId}/return`, { method: "POST" });
-    await succeed("msg.book_returned");
+    const loan = loans.find((candidate) => candidate.id === loanId);
+    if (!confirmReturn(loan)) return;
+    const returned = await api(`/api/loans/${loanId}/return`, { method: "POST" });
+    await succeed(returnMessage(returned));
   },
   async delete(bookId) {
-    if (!confirm(t("confirm.delete"))) return;
+    const { title } = bookById(bookId);
+    if (!confirm(t("confirm.delete", { title }))) return;
     await api(`/api/books/${bookId}`, { method: "DELETE" });
-    await succeed("msg.book_deleted");
+    await succeed(t("msg.book_deleted_title", { title }));
   },
 };
 
@@ -708,18 +850,34 @@ function startChat() {
 
 const loanOverlay = document.getElementById("loan-overlay");
 const loanForm = document.getElementById("loan-form");
+const loanDue = document.getElementById("loan-due");
 let bookToLend = null;
 
-function openLoanForm(bookId) {
+/** Abre el diálogo con el libro que se va a prestar y su fecha de devolución. */
+async function openLoanForm(bookId) {
   bookToLend = bookId;
-  const book = books.find((candidate) => candidate.id === bookId);
+  const book = bookById(bookId);
 
-  document.getElementById("loan-book").textContent =
-    t("loanform.book") + ": " + book.title;
+  document.getElementById("loan-book").textContent = t("loanform.book", {
+    title: book.title,
+    author: book.author,
+    isbn: book.isbn || "—",
+  });
+  loanDue.textContent = "";
 
   resetForm(loanForm);
   loanOverlay.hidden = false;
   document.getElementById("loan-borrower").focus();
+
+  // El plazo lo fija el servidor: se le pregunta a su función stateless, en
+  // vez de repetir aquí los 15 días. Es solo informativo; si falla, el
+  // formulario funciona igual y la fecha se ve al registrar el préstamo.
+  try {
+    const due = await api("/api/tools/due-date?" + new URLSearchParams({ loan_date: todayIso() }));
+    loanDue.textContent = t("loanform.due", { days: due.days, date: formatDate(due.due_date) });
+  } catch {
+    loanDue.textContent = "";
+  }
 }
 
 function closeLoanForm() {
@@ -744,7 +902,7 @@ loanForm.addEventListener("submit", (event) => {
   runAction(async () => {
     if (!formIsValid(loanForm)) return;
 
-    await postJson("/api/loans", {
+    const loan = await postJson("/api/loans", {
       book_id: bookToLend,
       borrower: document.getElementById("loan-borrower").value,
       dni: document.getElementById("loan-dni").value,
@@ -752,7 +910,11 @@ loanForm.addEventListener("submit", (event) => {
       phone: document.getElementById("loan-phone").value,
     });
     closeLoanForm();
-    await succeed("msg.loan_created");
+    await succeed(t("msg.loan_created", {
+      title: loan.book_title,
+      borrower: loan.borrower,
+      date: formatDate(loan.due_date),
+    }));
   });
 });
 
@@ -768,7 +930,7 @@ document.getElementById("language-select").addEventListener("change", (event) =>
 });
 
 // Al abrir la página, la calculadora se rellena con la fecha de hoy.
-document.getElementById("calc-loan-date").value = new Date().toISOString().slice(0, 10);
+document.getElementById("calc-loan-date").value = todayIso();
 
 /** Arranque: primero el catálogo de traducciones, después los datos. */
 async function start() {

@@ -96,7 +96,8 @@ class LoanService:
         # Crear el préstamo y marcar el libro son UNA operación: o las dos o
         # ninguna, para que nunca haya un préstamo de un libro «disponible».
         with unit_of_work() as uow:
-            loan.book_title = _require_available_book(uow, book_id).title
+            book = _require_available_book(uow, book_id)
+            loan.book_title, loan.book_isbn = book.title, book.isbn
             created = uow.loans.create(loan)
             uow.books.set_available(book_id, False)
 
