@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block body_class %}page-reader{% endblock %}
+
+{% block main %}
+<div class="layout">
+  <main class="content">
+    <section class="panel" id="catalog" aria-labelledby="catalog-title">
+      <div class="panel-head">
+        <h2 id="catalog-title">{{ t('catalog.heading') }}</h2>
+        <span class="count" id="books-count"></span>
+        <label class="toggle">
+          <input type="checkbox" id="only-available">
+          <span>{{ t('catalog.only_available') }}</span>
+        </label>
+      </div>
+      <ul class="book-grid" id="book-grid"></ul>
+    </section>
+
+    {# Calculadora de plazos: llama a las funciones sin estado del servidor
+       (vencimiento y multa) cada vez que cambia una fecha. #}
+    <section class="panel" id="terms" aria-labelledby="terms-title">
+      <div class="panel-head">
+        <h2 id="terms-title">{{ t('terms.heading') }}</h2>
+      </div>
+      <div class="panel-body">
+        <p class="muted" id="terms-summary"></p>
+        <div class="terms-form">
+          <label class="field">
+            <span>{{ t('terms.picked_up') }}</span>
+            <input type="date" id="terms-loan-date">
+          </label>
+          <label class="field">
+            <span>{{ t('terms.returned') }}</span>
+            <input type="date" id="terms-return-date">
+          </label>
+        </div>
+        <div class="terms-result" id="terms-result" aria-live="polite"></div>
+      </div>
+    </section>
+  </main>
+
+  <aside class="side">
+    {# Lista de deseos en la sesión (función con estado): solo de este navegador. #}
+    <section class="panel" id="wishlist" aria-labelledby="wishlist-title">
+      <div class="panel-head">
+        <h2 id="wishlist-title">{{ t('wishlist.heading') }}</h2>
+        <span class="count" id="wishlist-count"></span>
+        <button type="button" class="link" id="wishlist-clear">{{ t('wishlist.clear') }}</button>
+      </div>
+      <ul class="wish-list" id="wish-list"></ul>
+    </section>
+
+    {% set chat_title = t('chat.heading_reader') %}
+    {% include "_chat.html" %}
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/reader.js') }}"></script>
+{% endblock %}

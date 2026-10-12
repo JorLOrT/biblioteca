@@ -1,9 +1,9 @@
 """Chat de la biblioteca — reglas y memoria de la conversación.
 
-El chat no exige registro. Para escribir basta con dar un apodo y un correo que
-identifiquen a la persona; el correo se comprueba con la MISMA expresión
-regular que usa el resto de la aplicación, así que no hay dos criterios
-distintos para validar lo mismo.
+Quien escribe es siempre una cuenta con la sesión iniciada: el bibliotecario o
+un lector. La identidad sale de esa cuenta y no de lo que mande el navegador,
+así que nadie puede hacerse pasar por el bibliotecario. El texto del mensaje
+se comprueba con la misma expresión regular de `validators` que el resto.
 
 El historial vive en la memoria del proceso, igual que los contadores de
 `activity_service`: es estado compartido por todos los conectados y se pierde
@@ -27,18 +27,20 @@ MAX_HISTORY = 80  # mensajes que se recuerdan; los más viejos se descartan
 
 
 class Identity(TypedDict):
-    """Quién escribe. Solo vale mientras dura su conexión."""
+    """Quién escribe: la cuenta con la que inició sesión."""
 
+    username: str
     nickname: str
-    email: str
+    role: str
     initial: str
     color: str
 
 
 class ChatMessage(TypedDict):
     id: int
+    username: str
     nickname: str
-    email: str
+    role: str
     initial: str
     color: str
     text: str
@@ -51,33 +53,26 @@ _history: deque[ChatMessage] = deque(maxlen=MAX_HISTORY)
 _next_id = itertools.count(1)
 
 
-def _color_for(email: str) -> str:
-    """Un color estable por persona, derivado de su correo.
+def _color_for(username: str) -> str:
+    """Un color estable por cuenta, derivado de su nombre de usuario.
 
-    Siempre el mismo para el mismo correo, así cada quien se reconoce en la
+    Siempre el mismo para la misma cuenta, así cada quien se reconoce en la
     conversación sin necesidad de guardar nada. El hash solo reparte colores,
     no protege nada; de ahí `usedforsecurity=False`.
     """
-    digest = hashlib.md5(
-        email.strip().lower().encode("utf-8"), usedforsecurity=False
-    ).hexdigest()
+    digest = hashlib.md5(username.encode("utf-8"), usedforsecurity=False).hexdigest()
     hue = int(digest[:4], 16) % 360
-    return f"hsl({hue}, 62%, 42%)"
+    return f"hsl({hue}, 55%, 40%)"
 
 
-def identify(nickname: str, email: str) -> Identity:
-    """Valida los datos de quien entra y devuelve su identidad en el chat.
-
-    No crea ninguna cuenta: la identidad vale solo mientras dure la conexión.
-    """
-    clean_nickname = validate_field("nickname", nickname)
-    clean_email = validate_field("email", email)
-
+def identity_for(username: str, display_name: str, role: str) -> Identity:
+    """La identidad en el chat de una cuenta que ya inició sesión."""
     return {
-        "nickname": clean_nickname,
-        "email": clean_email,
-        "initial": clean_nickname[0].upper(),
-        "color": _color_for(clean_email),
+        "username": username,
+        "nickname": display_name,
+        "role": role,
+        "initial": display_name[:1].upper(),
+        "color": _color_for(username),
     }
 
 
@@ -88,8 +83,9 @@ def publish(identity: Identity, text: str) -> ChatMessage:
     with _lock:
         message: ChatMessage = {
             "id": next(_next_id),
+            "username": identity["username"],
             "nickname": identity["nickname"],
-            "email": identity["email"],
+            "role": identity["role"],
             "initial": identity["initial"],
             "color": identity["color"],
             "text": content,

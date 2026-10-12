@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ t('app.title') }}{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body class="{% block body_class %}{% endblock %}"
+      {% if user %}data-username="{{ user.username }}" data-name="{{ user.name }}" data-role="{{ user.role }}"{% endif %}>
+
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('home.index') }}">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2z"/>
+        <path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z"/>
+      </svg>
+      <span>{{ t('app.title') }}</span>
+    </a>
+
+    <div class="topbar-end">
+      <select id="language-select" class="lang-select" aria-label="{{ t('lang.label') }}">
+        <option value="es" {% if lang == 'es' %}selected{% endif %}>Español</option>
+        <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
+      </select>
+      {% if user %}
+        {% set role_label = t('role.' ~ user.role) %}
+        <div class="user-chip">
+          <span class="avatar" aria-hidden="true">{{ user.name[:1] }}</span>
+          <span class="user-text">
+            <strong>{{ user.name }}</strong>
+            {% if role_label != user.name %}<small>{{ role_label }}</small>{% endif %}
+          </span>
+        </div>
+        <button type="button" class="btn ghost sm" id="logout">{{ t('auth.logout') }}</button>
+      {% endif %}
+    </div>
+  </header>
+
+  {% block main %}{% endblock %}
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  {% block dialogs %}{% endblock %}
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from data_access.book_repository import BookRepository
 from data_access.database import get_connection
 from data_access.loan_repository import LoanRepository
+from data_access.user_repository import UserRepository
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class UnitOfWork:
 
     books: BookRepository
     loans: LoanRepository
+    users: UserRepository
 
 
 @contextmanager
@@ -40,4 +42,8 @@ def unit_of_work() -> Iterator[UnitOfWork]:
         # préstamos simultáneos podrían leer los dos «disponible» antes de que
         # ninguno escribiera, y el mismo libro se prestaría dos veces.
         connection.execute("BEGIN IMMEDIATE")
-        yield UnitOfWork(BookRepository(connection), LoanRepository(connection))
+        yield UnitOfWork(
+            BookRepository(connection),
+            LoanRepository(connection),
+            UserRepository(connection),
+        )

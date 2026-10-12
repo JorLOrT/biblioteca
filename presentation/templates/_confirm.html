@@ -1,0 +1,14 @@
+{# Confirmación genérica: el JavaScript pone el título, el texto y el botón.
+   Con method="dialog", pulsar un botón cierra el diálogo y deja su `value`. #}
+<dialog class="dialog small" id="confirm-dialog" aria-labelledby="confirm-title">
+  <form method="dialog">
+    <div class="dialog-body">
+      <h2 id="confirm-title"></h2>
+      <div id="confirm-body"></div>
+    </div>
+    <footer class="dialog-foot">
+      <button value="cancel" class="btn ghost">{{ t('common.cancel') }}</button>
+      <button value="ok" class="btn primary" id="confirm-ok"></button>
+    </footer>
+  </form>
+</dialog>

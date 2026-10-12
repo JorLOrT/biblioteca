@@ -5,11 +5,16 @@ from typing import TypedDict
 from flask import Blueprint, Response, jsonify, request
 
 from business.book_service import BookService
+from presentation.auth import librarian_required, login_required
+from presentation.chat_socket import notify_catalog_changed
 from presentation.i18n import translate
 from presentation.json_input import request_json, text_field
 
 book_bp = Blueprint("books", __name__, url_prefix="/api/books")
 service = BookService()
+
+# Consultar el catálogo: cualquier cuenta. Cambiarlo: solo el bibliotecario.
+book_bp.before_request(login_required)
 
 
 class _BookForm(TypedDict):
@@ -44,17 +49,23 @@ def get_book(book_id: int) -> Response:
 
 @book_bp.post("")
 def create_book() -> tuple[Response, int]:
+    librarian_required()
     book = service.create_book(**_book_form())
+    notify_catalog_changed()
     return jsonify(book.to_dict()), 201
 
 
 @book_bp.put("/<int:book_id>")
 def update_book(book_id: int) -> Response:
+    librarian_required()
     book = service.update_book(book_id, **_book_form())
+    notify_catalog_changed()
     return jsonify(book.to_dict())
 
 
 @book_bp.delete("/<int:book_id>")
 def delete_book(book_id: int) -> Response:
+    librarian_required()
     service.delete_book(book_id)
+    notify_catalog_changed()
     return jsonify({"message": translate("msg.book_deleted")})

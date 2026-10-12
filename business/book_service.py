@@ -5,6 +5,7 @@ from datetime import date
 
 from business import activity_service
 from business.exceptions import BusinessError, NotFoundError
+from business.library_calculator import calculate_due_date
 from business.validators import normalize_isbn, validate_field
 from data_access.unit_of_work import UnitOfWork, unit_of_work
 from entities.book import Book
@@ -18,6 +19,20 @@ def require_book(uow: UnitOfWork, book_id: int) -> Book:
     if book is None:
         raise NotFoundError("error.book_not_found", id=book_id)
     return book
+
+
+def with_due_dates(uow: UnitOfWork, books: list[Book]) -> list[Book]:
+    """Completa cada libro prestado con la fecha en que debe volver.
+
+    El vencimiento no se guarda: se calcula a partir de la fecha del préstamo
+    con la función STATELESS `calculate_due_date`. Así el lector sabe cuándo
+    vuelve un libro sin ver a quién se le prestó.
+    """
+    lent_on = {loan.book_id: loan.loan_date for loan in uow.loans.get_active()}
+    for book in books:
+        loan_date = lent_on.get(book.id) if book.id is not None else None
+        book.due_date = calculate_due_date(loan_date) if loan_date else None
+    return books
 
 
 def _validated_book(title: str, author: str, year: str, isbn: str) -> Book:
@@ -52,11 +67,12 @@ class BookService:
 
     def list_books(self, only_available: bool = False) -> list[Book]:
         with unit_of_work() as uow:
-            return uow.books.get_all(only_available=only_available)
+            books = uow.books.get_all(only_available=only_available)
+            return with_due_dates(uow, books)
 
     def get_book(self, book_id: int) -> Book:
         with unit_of_work() as uow:
-            return require_book(uow, book_id)
+            return with_due_dates(uow, [require_book(uow, book_id)])[0]
 
     def create_book(self, title: str, author: str, year: str, isbn: str) -> Book:
         # Un libro recién registrado siempre entra disponible al catálogo.

@@ -46,6 +46,13 @@ class LoanRepository:
         ).fetchall()
         return [self._to_entity(row) for row in rows]
 
+    def get_active(self) -> list[Loan]:
+        """Los préstamos que siguen abiertos: el libro aún no ha vuelto."""
+        rows = self._db.execute(
+            SELECT_LOAN + " WHERE loans.return_date IS NULL"
+        ).fetchall()
+        return [self._to_entity(row) for row in rows]
+
     def get_by_id(self, loan_id: int) -> Optional[Loan]:
         return self._get_one(" WHERE loans.id = ?", (loan_id,))
 

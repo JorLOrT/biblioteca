@@ -20,3 +20,11 @@ class BusinessError(Exception):
 
 class NotFoundError(BusinessError):
     """El recurso solicitado no existe (la presentación responde 404)."""
+
+
+class AuthError(BusinessError):
+    """Hace falta iniciar sesión, o el usuario o la contraseña no son válidos (401)."""
+
+
+class ForbiddenError(BusinessError):
+    """La cuenta no tiene permiso para esta operación (la presentación responde 403)."""

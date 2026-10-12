@@ -8,9 +8,11 @@ saber que existe la web.
 from flask import Blueprint, Response, jsonify, session
 
 from business.wishlist_service import MAX_WISHLIST, WishlistService
+from presentation.auth import login_required
 
 wishlist_bp = Blueprint("wishlist", __name__, url_prefix="/api/wishlist")
 service = WishlistService()
+wishlist_bp.before_request(login_required)
 
 SESSION_KEY = "wishlist"
 

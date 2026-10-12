@@ -13,7 +13,7 @@ from typing import Optional, TypedDict
 
 from flask import Flask, Response, jsonify
 
-from business.exceptions import BusinessError, NotFoundError
+from business.exceptions import AuthError, BusinessError, ForbiddenError, NotFoundError
 from presentation.i18n import translate
 
 
@@ -27,6 +27,16 @@ def error_payload(error: BusinessError, lang: Optional[str] = None) -> ErrorPayl
 
 
 def register_error_handlers(app: Flask) -> None:
+    # Flask elige el manejador de la clase más concreta, así que estos tres
+    # ganan al de BusinessError.
+    @app.errorhandler(AuthError)
+    def handle_auth_error(error: AuthError) -> tuple[Response, int]:
+        return jsonify(error_payload(error)), 401
+
+    @app.errorhandler(ForbiddenError)
+    def handle_forbidden(error: ForbiddenError) -> tuple[Response, int]:
+        return jsonify(error_payload(error)), 403
+
     @app.errorhandler(NotFoundError)
     def handle_not_found(error: NotFoundError) -> tuple[Response, int]:
         return jsonify(error_payload(error)), 404

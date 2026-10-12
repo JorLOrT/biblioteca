@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block body_class %}page-librarian{% endblock %}
+
+{% block main %}
+<div class="layout">
+  <main class="content">
+
+    {# Contadores en la memoria del servidor (función con estado): los ve igual
+       cualquier bibliotecario conectado y se pierden al reiniciar. #}
+    <section class="activity" aria-labelledby="activity-title">
+      <div class="activity-head">
+        <h2 id="activity-title">{{ t('activity.heading') }}</h2>
+        <span class="muted">{{ t('activity.since') }}</span>
+        <button type="button" class="link" id="activity-reset">{{ t('activity.reset') }}</button>
+      </div>
+      <div class="stats" id="activity-stats"></div>
+      <p class="muted small" id="activity-last"></p>
+    </section>
+
+    <nav class="tabs" role="tablist" aria-label="{{ t('nav.sections') }}">
+      <a class="tab" role="tab" id="tab-loans" href="#loans" aria-controls="loans">
+        {{ t('nav.loans') }} <span class="tab-count" id="loans-count"></span>
+      </a>
+      <a class="tab" role="tab" id="tab-catalog" href="#catalog" aria-controls="catalog">
+        {{ t('nav.catalog') }} <span class="tab-count" id="books-count"></span>
+      </a>
+    </nav>
+
+    <section class="panel" id="loans" role="tabpanel" aria-labelledby="tab-loans">
+      <div class="panel-head">
+        <h2>{{ t('loans.active') }}</h2>
+        <button type="button" class="btn primary" id="new-loan">{{ t('loans.new') }}</button>
+      </div>
+      <ul class="loan-list" id="loan-list"></ul>
+
+      <details class="history">
+        <summary>{{ t('loans.history') }} <span class="count" id="history-count"></span></summary>
+        <div class="table-wrap">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>{{ t('table.book') }}</th>
+                <th>{{ t('table.borrower') }}</th>
+                <th>{{ t('table.loan_date') }}</th>
+                <th>{{ t('table.return_date') }}</th>
+                <th>{{ t('table.result') }}</th>
+              </tr>
+            </thead>
+            <tbody id="history-rows"></tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel" id="catalog" role="tabpanel" aria-labelledby="tab-catalog" hidden>
+      <div class="panel-head">
+        <h2>{{ t('catalog.heading') }}</h2>
+        <label class="toggle">
+          <input type="checkbox" id="only-available">
+          <span>{{ t('catalog.only_available') }}</span>
+        </label>
+        <button type="button" class="btn primary" id="add-book">{{ t('catalog.add') }}</button>
+      </div>
+      <ul class="book-list" id="book-list"></ul>
+    </section>
+  </main>
+
+  <aside class="side">
+    {% set chat_title = t('chat.heading_librarian') %}
+    {% include "_chat.html" %}
+  </aside>
+</div>
+{% endblock %}
+
+{% block dialogs %}
+{# ---- Agregar o editar un libro: primero el ISBN, el resto llega de Open Library ---- #}
+<dialog class="dialog" id="book-dialog" aria-labelledby="book-dialog-title">
+  <form id="book-form" class="form" novalidate autocomplete="off">
+    <header class="dialog-head">
+      <h2 id="book-dialog-title">{{ t('book.add_heading') }}</h2>
+      <button type="button" class="icon-btn" data-close aria-label="{{ t('common.close') }}">×</button>
+    </header>
+    <div class="dialog-body">
+      <div class="field">
+        <label for="book-isbn">{{ t('book.isbn') }}</label>
+        <div class="input-row">
+          <input type="text" id="book-isbn" data-rule="isbn" inputmode="numeric" placeholder="978…">
+          <button type="button" class="btn secondary" id="isbn-lookup">{{ t('book.lookup') }}</button>
+        </div>
+        <small class="hint">{{ t('book.isbn_hint') }}</small>
+        <small class="field-error" hidden></small>
+      </div>
+
+      <div class="lookup" id="lookup-result" aria-live="polite" hidden></div>
+
+      <div class="field">
+        <label for="book-title">{{ t('book.title') }}</label>
+        <input type="text" id="book-title" data-rule="title">
+        <small class="hint">{{ t('hint.title') }}</small>
+        <small class="field-error" hidden></small>
+      </div>
+      <div class="field-row">
+        <div class="field grow">
+          <label for="book-author">{{ t('book.author') }}</label>
+          <input type="text" id="book-author" data-rule="author">
+          <small class="hint">{{ t('hint.author') }}</small>
+          <small class="field-error" hidden></small>
+        </div>
+        <div class="field narrow">
+          <label for="book-year">{{ t('book.year') }}</label>
+          <input type="text" id="book-year" data-rule="year" inputmode="numeric" maxlength="4">
+          <small class="hint">{{ t('hint.year') }}</small>
+          <small class="field-error" hidden></small>
+        </div>
+      </div>
+      {# Un <dialog> modal tapa el aviso flotante: sus errores se ven aquí. #}
+      <p class="dialog-error" role="alert" hidden></p>
+    </div>
+    <footer class="dialog-foot">
+      <button type="button" class="btn ghost" data-close>{{ t('common.cancel') }}</button>
+      <button type="submit" class="btn primary" id="book-submit">{{ t('book.submit_add') }}</button>
+    </footer>
+  </form>
+</dialog>
+
+{# ---- Nuevo préstamo: el libro, cuándo vuelve y quién se lo lleva ---- #}
+<dialog class="dialog" id="loan-dialog" aria-labelledby="loan-dialog-title">
+  <form id="loan-form" class="form" novalidate autocomplete="off">
+    <header class="dialog-head">
+      <h2 id="loan-dialog-title">{{ t('loanform.heading') }}</h2>
+      <button type="button" class="icon-btn" data-close aria-label="{{ t('common.close') }}">×</button>
+    </header>
+    <div class="dialog-body">
+      <div class="field">
+        <label for="loan-book">{{ t('loanform.book') }}</label>
+        <select id="loan-book"></select>
+      </div>
+      <div class="loan-summary" id="loan-summary"></div>
+
+      <fieldset class="fieldset">
+        <legend>{{ t('loanform.person') }}</legend>
+        <div class="field">
+          <label for="loan-borrower">{{ t('loanform.borrower') }}</label>
+          <input type="text" id="loan-borrower" data-rule="borrower" autocomplete="off">
+          <small class="hint">{{ t('hint.borrower') }}</small>
+          <small class="field-error" hidden></small>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="loan-dni">{{ t('loanform.dni') }}</label>
+            <input type="text" id="loan-dni" data-rule="dni" inputmode="numeric" maxlength="8">
+            <small class="hint">{{ t('hint.dni') }}</small>
+            <small class="field-error" hidden></small>
+          </div>
+          <div class="field">
+            <label for="loan-phone">{{ t('loanform.phone') }}</label>
+            <input type="text" id="loan-phone" data-rule="phone" inputmode="numeric" maxlength="9">
+            <small class="hint">{{ t('hint.phone') }}</small>
+            <small class="field-error" hidden></small>
+          </div>
+        </div>
+        <div class="field">
+          <label for="loan-email">{{ t('loanform.email') }}</label>
+          <input type="text" id="loan-email" data-rule="email" inputmode="email">
+          <small class="hint">{{ t('hint.email') }}</small>
+          <small class="field-error" hidden></small>
+        </div>
+      </fieldset>
+      <p class="dialog-error" role="alert" hidden></p>
+    </div>
+    <footer class="dialog-foot">
+      <button type="button" class="btn ghost" data-close>{{ t('common.cancel') }}</button>
+      <button type="submit" class="btn primary" id="loan-submit">{{ t('loanform.submit') }}</button>
+    </footer>
+  </form>
+</dialog>
+
+{% include "_confirm.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/librarian.js') }}"></script>
+{% endblock %}

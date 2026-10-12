@@ -12,7 +12,7 @@ responsabilidad de la capa de presentación (`wishlist_controller`).
 
 from collections.abc import Sequence
 
-from business.book_service import require_book
+from business.book_service import require_book, with_due_dates
 from business.exceptions import BusinessError
 from data_access.unit_of_work import unit_of_work
 from entities.book import Book
@@ -52,5 +52,7 @@ class WishlistService:
         mientras la sesión seguía abierta).
         """
         with unit_of_work() as uow:
-            books = [uow.books.get_by_id(book_id) for book_id in wishlist]
-        return [book for book in books if book is not None]
+            found = [uow.books.get_by_id(book_id) for book_id in wishlist]
+            books = [book for book in found if book is not None]
+            # Como en el catálogo: si está prestado, cuándo vuelve.
+            return with_due_dates(uow, books)

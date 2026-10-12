@@ -18,8 +18,10 @@ import os
 from flask import Flask
 from flask.json.provider import DefaultJSONProvider
 
+from business.auth_service import ensure_demo_accounts
 from data_access.database import init_db
 from presentation.activity_controller import activity_bp
+from presentation.auth_controller import auth_bp
 from presentation.book_controller import book_bp
 from presentation.chat_socket import sock
 from presentation.error_handlers import register_error_handlers
@@ -67,12 +69,18 @@ def create_app() -> Flask:
         static_folder="presentation/static",
     )
     app.json = UnicodeJSONProvider(app)
-    # Firma la cookie de sesión (idioma y lista de deseos).
+    # Firma la cookie de sesión (cuenta, idioma y lista de deseos).
     app.secret_key = _secret_key()
+    # Lax: el navegador no manda la cookie en peticiones que lancen otras webs,
+    # así que otra página no puede prestar ni borrar nada en nombre de quien
+    # tenga la sesión abierta.
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
     init_db()
+    ensure_demo_accounts()
 
     app.register_blueprint(home_bp)
+    app.register_blueprint(auth_bp)        # iniciar y cerrar sesión
     app.register_blueprint(book_bp)
     app.register_blueprint(loan_bp)
     app.register_blueprint(i18n_bp)        # idioma (i18n)

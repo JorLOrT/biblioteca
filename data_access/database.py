@@ -31,15 +31,35 @@ CREATE TABLE IF NOT EXISTS loans (
     loan_date      TEXT    NOT NULL,
     return_date    TEXT
 );
+
+-- Cuentas para iniciar sesión. La contraseña nunca se guarda: solo su hash.
+CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    username      TEXT    NOT NULL UNIQUE,
+    display_name  TEXT    NOT NULL,
+    role          TEXT    NOT NULL CHECK (role IN ('librarian', 'reader')),
+    password_hash TEXT    NOT NULL
+);
 """
 
 SEED_BOOKS = [
     ("Cien años de soledad", "Gabriel García Márquez", 1967, "9780307474728"),
-    ("Don Quijote de la Mancha", "Miguel de Cervantes", 1605, "9788424922580"),
-    ("La ciudad y los perros", "Mario Vargas Llosa", 1963, "9788420471839"),
+    ("Don Quijote de la Mancha", "Miguel de Cervantes", 1605, "9788467044812"),
+    ("La ciudad y los perros", "Mario Vargas Llosa", 1963, "9788420406961"),
     ("Rayuela", "Julio Cortázar", 1963, "9788437604572"),
-    ("Ficciones", "Jorge Luis Borges", 1944, "9788499089515"),
-    ("El túnel", "Ernesto Sabato", 1948, "9788432248160"),
+    ("Ficciones", "Jorge Luis Borges", 1944, "9788426405739"),
+    ("El túnel", "Ernesto Sabato", 1948, "9788437625386"),
+]
+
+# ISBN de la primera versión de los datos de ejemplo que eran de otro libro
+# (Open Library mostraba, por ejemplo, la portada de «El Aleph» para
+# «Ficciones»). Se corrigen también en las bases ya creadas, pero solo si la
+# fila sigue teniendo ese título con ese ISBN equivocado.
+SEED_ISBN_FIXES = [
+    ("Don Quijote de la Mancha", "9788424922580", "9788467044812"),
+    ("La ciudad y los perros", "9788420471839", "9788420406961"),
+    ("Ficciones", "9788499089515", "9788426405739"),
+    ("El túnel", "9788432248160", "9788437625386"),
 ]
 
 # Columnas añadidas después de la primera versión. `CREATE TABLE IF NOT EXISTS`
@@ -62,6 +82,11 @@ def _apply_migrations(connection: sqlite3.Connection) -> None:
         }
         if column not in existing:
             connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
+
+    connection.executemany(
+        "UPDATE books SET isbn = ? WHERE title = ? AND isbn = ?",
+        [(right, title, wrong) for title, wrong, right in SEED_ISBN_FIXES],
+    )
 
 
 @contextmanager

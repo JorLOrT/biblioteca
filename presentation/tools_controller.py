@@ -13,8 +13,10 @@ from business.library_calculator import (
     calculate_fine,
 )
 from business.validators import parse_int
+from presentation.auth import login_required
 
 tools_bp = Blueprint("tools", __name__, url_prefix="/api/tools")
+tools_bp.before_request(login_required)
 
 
 @tools_bp.get("/due-date")

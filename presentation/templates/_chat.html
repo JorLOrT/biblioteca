@@ -1,0 +1,26 @@
+{# Chat por WebSocket. Lo usan las dos vistas; cada una le da su título.
+   No hay formulario para entrar: la identidad es la de la cuenta. #}
+<section class="panel chat" id="chat" aria-labelledby="chat-title">
+  <div class="panel-head">
+    <h2 id="chat-title">{{ chat_title }}</h2>
+    <span class="presence" id="chat-presence">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="chat-presence-text">{{ t('chat.connecting') }}</span>
+    </span>
+  </div>
+
+  <ul class="chat-messages" id="chat-messages"></ul>
+
+  <form class="chat-send" id="chat-send-form" autocomplete="off">
+    <input type="text" id="chat-text" maxlength="500"
+           placeholder="{{ t('chat.placeholder') }}" aria-label="{{ t('chat.placeholder') }}">
+    <button type="submit" class="btn primary">{{ t('chat.send') }}</button>
+  </form>
+  <small class="form-error" id="chat-error" hidden></small>
+</section>
+
+{# En pantallas estrechas el chat queda abajo: este botón lleva hasta él y
+   avisa de los mensajes que llegaron mientras no estaba a la vista. #}
+<a class="chat-jump" id="chat-jump" href="#chat">
+  {{ t('chat.jump') }} <span class="unread" id="chat-unread" hidden></span>
+</a>
