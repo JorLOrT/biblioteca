@@ -1,5 +1,7 @@
-{# Chat por WebSocket. Lo usan las dos vistas; cada una le da su título.
-   No hay formulario para entrar: la identidad es la de la cuenta. #}
+{# Chat privado por WebSocket. Lo usan las dos vistas; cada una le da su
+   título. No hay formulario para entrar: la identidad es la de la cuenta.
+   El bibliotecario ve una conversación por lector y elige a quién contesta;
+   el lector solo tiene la suya. #}
 <section class="panel chat" id="chat" aria-labelledby="chat-title">
   <div class="panel-head">
     <h2 id="chat-title">{{ chat_title }}</h2>
@@ -8,6 +10,11 @@
       <span id="chat-presence-text">{{ t('chat.connecting') }}</span>
     </span>
   </div>
+
+  {% if user.role == 'librarian' %}
+  <ul class="conversations" id="chat-conversations" aria-label="{{ t('chat.heading_librarian') }}"></ul>
+  <p class="chat-with" id="chat-with" hidden></p>
+  {% endif %}
 
   <ul class="chat-messages" id="chat-messages"></ul>
 

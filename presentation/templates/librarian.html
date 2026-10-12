@@ -24,6 +24,9 @@
       <a class="tab" role="tab" id="tab-catalog" href="#catalog" aria-controls="catalog">
         {{ t('nav.catalog') }} <span class="tab-count" id="books-count"></span>
       </a>
+      <a class="tab" role="tab" id="tab-readers" href="#readers" aria-controls="readers">
+        {{ t('nav.readers') }} <span class="tab-count" id="readers-count"></span>
+      </a>
     </nav>
 
     <section class="panel" id="loans" role="tabpanel" aria-labelledby="tab-loans">
@@ -55,6 +58,7 @@
     <section class="panel" id="catalog" role="tabpanel" aria-labelledby="tab-catalog" hidden>
       <div class="panel-head">
         <h2>{{ t('catalog.heading') }}</h2>
+        {% include "_search.html" %}
         <label class="toggle">
           <input type="checkbox" id="only-available">
           <span>{{ t('catalog.only_available') }}</span>
@@ -62,6 +66,15 @@
         <button type="button" class="btn primary" id="add-book">{{ t('catalog.add') }}</button>
       </div>
       <ul class="book-list" id="book-list"></ul>
+    </section>
+
+    {# Cuentas de los lectores: sus datos, su carnet y si se les puede prestar. #}
+    <section class="panel" id="readers" role="tabpanel" aria-labelledby="tab-readers" hidden>
+      <div class="panel-head">
+        <h2>{{ t('readers.heading') }}</h2>
+        <button type="button" class="btn primary" id="add-reader">{{ t('readers.add') }}</button>
+      </div>
+      <ul class="reader-list" id="reader-list"></ul>
     </section>
   </main>
 
@@ -123,7 +136,7 @@
   </form>
 </dialog>
 
-{# ---- Nuevo préstamo: el libro, cuándo vuelve y quién se lo lleva ---- #}
+{# ---- Nuevo préstamo: el libro, el lector (sus datos llegan de su cuenta) y si se le puede prestar ---- #}
 <dialog class="dialog" id="loan-dialog" aria-labelledby="loan-dialog-title">
   <form id="loan-form" class="form" novalidate autocomplete="off">
     <header class="dialog-head">
@@ -137,40 +150,114 @@
       </div>
       <div class="loan-summary" id="loan-summary"></div>
 
-      <fieldset class="fieldset">
-        <legend>{{ t('loanform.person') }}</legend>
-        <div class="field">
-          <label for="loan-borrower">{{ t('loanform.borrower') }}</label>
-          <input type="text" id="loan-borrower" data-rule="borrower" autocomplete="off">
-          <small class="hint">{{ t('hint.borrower') }}</small>
-          <small class="field-error" hidden></small>
+      <div class="field">
+        <label for="loan-reader">{{ t('loanform.reader') }}</label>
+        <select id="loan-reader"></select>
+      </div>
+
+      <fieldset class="fieldset reader-data">
+        <legend>{{ t('loanform.reader_data') }}</legend>
+        <div class="field-row">
+          <div class="field">
+            <label for="loan-name">{{ t('readerform.name') }}</label>
+            <input type="text" id="loan-name" readonly tabindex="-1">
+          </div>
+          <div class="field">
+            <label for="loan-dni">{{ t('readerform.dni') }}</label>
+            <input type="text" id="loan-dni" readonly tabindex="-1">
+          </div>
         </div>
         <div class="field-row">
           <div class="field">
-            <label for="loan-dni">{{ t('loanform.dni') }}</label>
-            <input type="text" id="loan-dni" data-rule="dni" inputmode="numeric" maxlength="8">
-            <small class="hint">{{ t('hint.dni') }}</small>
+            <label for="loan-phone">{{ t('readerform.phone') }}</label>
+            <input type="text" id="loan-phone" readonly tabindex="-1">
+          </div>
+          <div class="field">
+            <label for="loan-email">{{ t('readerform.email') }}</label>
+            <input type="text" id="loan-email" readonly tabindex="-1">
+          </div>
+        </div>
+      </fieldset>
+
+      <p class="callout" id="loan-eligibility" aria-live="polite" hidden></p>
+      <p class="dialog-error" role="alert" hidden></p>
+    </div>
+    <footer class="dialog-foot">
+      <button type="button" class="btn ghost" data-close>{{ t('common.cancel') }}</button>
+      <button type="submit" class="btn primary" id="loan-submit">{{ t('loanform.submit') }}</button>
+    </footer>
+  </form>
+</dialog>
+
+{# ---- Crear o editar la cuenta de un lector ---- #}
+<dialog class="dialog" id="reader-dialog" aria-labelledby="reader-dialog-title">
+  <form id="reader-form" class="form" novalidate autocomplete="off">
+    <header class="dialog-head">
+      <h2 id="reader-dialog-title">{{ t('readerform.add_heading') }}</h2>
+      <button type="button" class="icon-btn" data-close aria-label="{{ t('common.close') }}">×</button>
+    </header>
+    <div class="dialog-body">
+      <div class="field">
+        <label for="reader-name">{{ t('readerform.name') }}</label>
+        <input type="text" id="reader-name" data-rule="borrower">
+        <small class="hint">{{ t('hint.borrower') }}</small>
+        <small class="field-error" hidden></small>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="reader-dni">{{ t('readerform.dni') }}</label>
+          <input type="text" id="reader-dni" data-rule="dni" inputmode="numeric" maxlength="8">
+          <small class="hint">{{ t('hint.dni') }}</small>
+          <small class="field-error" hidden></small>
+        </div>
+        <div class="field">
+          <label for="reader-phone">{{ t('readerform.phone') }}</label>
+          <input type="text" id="reader-phone" data-rule="phone" inputmode="numeric" maxlength="9">
+          <small class="hint">{{ t('hint.phone') }}</small>
+          <small class="field-error" hidden></small>
+        </div>
+      </div>
+      <div class="field">
+        <label for="reader-email">{{ t('readerform.email') }}</label>
+        <input type="text" id="reader-email" data-rule="email" inputmode="email">
+        <small class="hint">{{ t('hint.email') }}</small>
+        <small class="field-error" hidden></small>
+      </div>
+
+      <fieldset class="fieldset">
+        <legend>{{ t('readerform.card') }}</legend>
+        <p class="muted small" id="reader-card-number" hidden></p>
+        <div class="field">
+          <label for="reader-card-expires">{{ t('readerform.card_expires') }}</label>
+          <input type="date" id="reader-card-expires" required>
+          <small class="hint">{{ t('readerform.card_hint') }}</small>
+        </div>
+      </fieldset>
+
+      <fieldset class="fieldset">
+        <legend>{{ t('readerform.account') }}</legend>
+        <div class="field-row">
+          <div class="field">
+            <label for="reader-username">{{ t('readerform.username') }}</label>
+            <input type="text" id="reader-username" data-rule="username"
+                   autocapitalize="none" spellcheck="false">
+            <small class="hint">{{ t('hint.username') }}</small>
             <small class="field-error" hidden></small>
           </div>
           <div class="field">
-            <label for="loan-phone">{{ t('loanform.phone') }}</label>
-            <input type="text" id="loan-phone" data-rule="phone" inputmode="numeric" maxlength="9">
-            <small class="hint">{{ t('hint.phone') }}</small>
+            <label for="reader-password">{{ t('readerform.password') }}</label>
+            <input type="text" id="reader-password" data-rule="password"
+                   autocapitalize="none" spellcheck="false">
+            <small class="hint" id="reader-password-hint">{{ t('hint.password') }}</small>
             <small class="field-error" hidden></small>
           </div>
-        </div>
-        <div class="field">
-          <label for="loan-email">{{ t('loanform.email') }}</label>
-          <input type="text" id="loan-email" data-rule="email" inputmode="email">
-          <small class="hint">{{ t('hint.email') }}</small>
-          <small class="field-error" hidden></small>
         </div>
       </fieldset>
       <p class="dialog-error" role="alert" hidden></p>
     </div>
     <footer class="dialog-foot">
       <button type="button" class="btn ghost" data-close>{{ t('common.cancel') }}</button>
-      <button type="submit" class="btn primary" id="loan-submit">{{ t('loanform.submit') }}</button>
+      <button type="submit" class="btn primary" id="reader-submit">{{ t('readerform.submit_add') }}</button>
     </footer>
   </form>
 </dialog>

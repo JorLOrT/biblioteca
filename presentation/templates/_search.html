@@ -1,0 +1,7 @@
+{# Búsqueda en el catálogo. La hace el servidor: GET /api/books?q=…, por
+   título, autor o ISBN, sin distinguir mayúsculas ni tildes. #}
+<div class="search">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+  <input type="search" id="book-search" maxlength="100"
+         placeholder="{{ t('catalog.search') }}" aria-label="{{ t('catalog.search') }}">
+</div>

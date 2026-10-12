@@ -4,10 +4,18 @@
 {% block main %}
 <div class="layout">
   <main class="content">
+    {# Su cuenta: el carnet, si está vigente, y el libro que tiene ahora.
+       Lo pide a /api/readers/me, que solo devuelve lo suyo. #}
+    <section class="panel my-card" id="my-card" aria-labelledby="my-card-title">
+      <h2 class="visually-hidden" id="my-card-title">{{ t('me.heading') }}</h2>
+      <div class="my-card-body" id="my-card-body"></div>
+    </section>
+
     <section class="panel" id="catalog" aria-labelledby="catalog-title">
       <div class="panel-head">
         <h2 id="catalog-title">{{ t('catalog.heading') }}</h2>
         <span class="count" id="books-count"></span>
+        {% include "_search.html" %}
         <label class="toggle">
           <input type="checkbox" id="only-available">
           <span>{{ t('catalog.only_available') }}</span>

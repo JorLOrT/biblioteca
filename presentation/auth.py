@@ -72,3 +72,8 @@ def login_required() -> None:
 def librarian_required() -> None:
     """Corta la petición si quien pide no es el bibliotecario (401 o 403)."""
     auth_service.require_librarian(_current_role())
+
+
+def reader_required() -> None:
+    """Corta la petición si quien pide no es un lector (401 o 403)."""
+    auth_service.require_reader_role(_current_role())

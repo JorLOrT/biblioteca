@@ -48,6 +48,12 @@ PATTERNS: dict[str, str] = {
     # Celular peruano: nueve cifras que empiezan por 9.
     "phone": r"^9\d{8}$",
 
+    # Usuario de una cuenta: de 3 a 20 letras sin tildes, cifras, «.», «_» o «-».
+    "username": r"^[A-Za-z0-9._-]{3,20}$",
+
+    # Contraseña: de 6 a 64 caracteres, sin espacios.
+    "password": r"^\S{6,64}$",
+
     # Mensaje del chat: de 1 a 500 caracteres y que no sea solo espacios.
     "message": r"^(?!\s*$)[\s\S]{1,500}$",
 }

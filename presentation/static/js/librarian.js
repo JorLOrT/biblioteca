@@ -1,28 +1,32 @@
 // MOSTRADOR DEL BIBLIOTECARIO
 //
-// Dos pestañas: Préstamos (qué libros están fuera, quién los tiene y cuándo
-// vuelven) y Catálogo (los libros, con sus acciones). Al lado, siempre, el chat
-// con los lectores. Prestar, recibir, agregar y editar se hacen en ventanas
-// que no sacan al bibliotecario de donde está.
+// Tres pestañas: Préstamos (qué libros están fuera, quién los tiene y cuándo
+// vuelven), Catálogo (los libros, con búsqueda y sus acciones) y Lectores (sus
+// cuentas y su carnet). Al lado, siempre, el chat privado con cada lector.
+// Prestar, recibir, agregar y editar se hacen en ventanas que no sacan al
+// bibliotecario de donde está.
 
 import {
-  api, confirmAction, coverHtml, daysUntil, enableLiveValidation, escapeHtml, fieldIsValid,
-  formatDate, formIsValid, markField, money, notify, resetForm, runAction, runInDialog,
-  sendJson, start, t, tn, todayIso,
+  api, avatarColor, confirmAction, coverHtml, daysUntil, enableLiveValidation, escapeHtml,
+  fieldIsValid, formatDate, formIsValid, markField, money, notify, resetForm, runAction,
+  runInDialog, sendJson, start, t, tn, todayIso,
 } from "./core.js";
-import { startChat } from "./chat.js";
+import { openConversation, setReaders, startChat } from "./chat.js";
 
 // Las acciones que cuenta el servidor, en el orden en que se muestran.
 const ACTIVITY_ACTIONS = ["loans", "returns", "books_created", "books_updated", "books_deleted"];
-const TABS = ["loans", "catalog"];
+const TABS = ["loans", "catalog", "readers"];
 
-let books = [];  // último catálogo recibido
-let loans = [];  // préstamos activos e historial
+let books = [];    // último catálogo recibido (con la búsqueda y el filtro aplicados)
+let loans = [];    // préstamos activos e historial
+let readers = [];  // cuentas de lectores, con su carnet y lo que tienen prestado
 
 const onlyAvailable = document.getElementById("only-available");
+const search = document.getElementById("book-search");
 
 const bookById = (id) => books.find((book) => book.id === id);
 const loanById = (id) => loans.find((loan) => loan.id === id);
+const readerById = (id) => readers.find((reader) => reader.id === id);
 const activeLoanFor = (bookId) => loans.find((loan) => loan.is_active && loan.book_id === bookId);
 
 // --- Pestañas -----------------------------------------------------------------
@@ -82,6 +86,7 @@ function loanCard(loan) {
   const dueLine = late
     ? t("loan.fine_so_far", { fine: money(loan.fine) })
     : t("loan.due_on", { date: formatDate(loan.due_date) });
+  const card = loan.reader_card ? `<p class="meta">${t("reader.card", { number: escapeHtml(loan.reader_card) })}</p>` : "";
   return `
     <li class="loan-card ${late ? "late" : ""}">
       ${coverHtml(loan, "sm")}
@@ -92,6 +97,7 @@ function loanCard(loan) {
       </div>
       <div class="loan-person">
         <p class="name">${escapeHtml(loan.borrower)}</p>
+        ${card}
         <p class="meta">${contactOf(loan)}</p>
       </div>
       <div class="loan-due">
@@ -181,28 +187,108 @@ function bookRow(book) {
     </li>`;
 }
 
+function emptyCatalogText() {
+  const query = search.value.trim();
+  if (query) return t("catalog.no_results", { query: escapeHtml(query) });
+  return t(onlyAvailable.checked ? "catalog.empty_available" : "catalog.empty");
+}
+
 function renderBooks(list) {
   books = list;
-  const empty = onlyAvailable.checked ? "catalog.empty_available" : "catalog.empty";
   document.getElementById("book-list").innerHTML = list.length
     ? list.map(bookRow).join("")
-    : `<li class="empty">${t(empty)}</li>`;
+    : `<li class="empty">${emptyCatalogText()}</li>`;
   document.getElementById("books-count").textContent = list.length;
+}
+
+/** El catálogo con la búsqueda y el filtro: los aplica el servidor. */
+function booksUrl() {
+  const params = new URLSearchParams();
+  const query = search.value.trim();
+  if (query) params.set("q", query);
+  if (onlyAvailable.checked) params.set("available", "true");
+  return "/api/books?" + params;
+}
+
+// --- Lectores -------------------------------------------------------------------
+
+function cardStatus(reader) {
+  return reader.card_valid
+    ? `<span class="pill ok">${t("reader.card_valid")}</span>
+       <p class="meta">${t("reader.valid_until", { date: formatDate(reader.card_expires) })}</p>`
+    : `<span class="pill danger">${t("reader.card_expired")}</span>
+       <p class="meta late">${t("reader.expired_on", { date: formatDate(reader.card_expires) })}</p>`;
+}
+
+function loanLine(reader) {
+  const loan = reader.active_loans[0];
+  if (!loan) return `<p class="meta">${t("reader.no_loans")}</p>`;
+  const late = loan.days_late > 0;
+  return `<p class="meta ${late ? "late" : ""}">${t(late ? "reader.has_loan_late" : "reader.has_loan", {
+    title: escapeHtml(loan.book_title), date: formatDate(loan.due_date),
+  })}</p>`;
+}
+
+/** Por qué no se le puede prestar, o null si se puede. */
+function blockedReason(reader) {
+  if (!reader.card_valid) return t("loanform.card_expired", { date: formatDate(reader.card_expires) });
+  const loan = reader.active_loans[0];
+  if (loan) {
+    const key = loan.days_late > 0 ? "loanform.has_loan_late" : "loanform.has_loan";
+    return t(key, { title: loan.book_title, date: formatDate(loan.due_date) });
+  }
+  return null;
+}
+
+function readerRow(reader) {
+  const reason = blockedReason(reader);
+  const lend = `<button class="btn primary sm" data-action="lend-to" data-id="${reader.id}"
+    ${reason ? `disabled title="${escapeHtml(reason)}"` : ""}>${t("action.lend")}</button>`;
+  return `
+    <li class="reader-row">
+      <span class="avatar" style="background:${avatarColor(reader.username)}">${escapeHtml(reader.name.charAt(0))}</span>
+      <div class="reader-info">
+        <p class="title">${escapeHtml(reader.name)}</p>
+        <p class="meta">@${escapeHtml(reader.username)} · ${t("reader.card", { number: escapeHtml(reader.card_number || "—") })}</p>
+        <p class="meta">DNI ${escapeHtml(reader.dni)} · ${escapeHtml(reader.phone)} · ${escapeHtml(reader.email)}</p>
+      </div>
+      <div class="reader-status">
+        ${cardStatus(reader)}
+        ${loanLine(reader)}
+      </div>
+      <div class="reader-actions">
+        ${lend}
+        <button class="btn ghost sm" data-action="renew" data-id="${reader.id}">${t("action.renew")}</button>
+        <button class="btn ghost sm" data-action="edit-reader" data-id="${reader.id}">${t("action.edit")}</button>
+        <button class="btn ghost sm" data-action="message" data-id="${reader.id}">${t("action.message")}</button>
+      </div>
+    </li>`;
+}
+
+function renderReaders(list) {
+  readers = list;
+  document.getElementById("reader-list").innerHTML = list.length
+    ? list.map(readerRow).join("")
+    : `<li class="empty">${t("readers.empty")}</li>`;
+  document.getElementById("readers-count").textContent = list.length;
+  // Cada lector es una conversación posible en el chat.
+  setReaders(list);
 }
 
 // --- Recarga ------------------------------------------------------------------
 
 async function reload() {
-  const [bookList, loanList, activity] = await Promise.all([
-    // El filtro lo aplica el servidor: GET /api/books?available=true.
-    api(onlyAvailable.checked ? "/api/books?available=true" : "/api/books"),
+  const [bookList, loanList, activity, readerList] = await Promise.all([
+    api(booksUrl()),
     api("/api/loans"),
     api("/api/activity"),
+    api("/api/readers"),
   ]);
   // Los préstamos van antes: el catálogo dice a quién está prestado cada libro.
   renderLoans(loanList);
   renderBooks(bookList);
   renderActivity(activity);
+  renderReaders(readerList);
 }
 
 // Cuando el servidor avisa por el WebSocket de que algo cambió (lo hizo otro
@@ -213,7 +299,14 @@ function reloadSoon() {
   reloadTimer = setTimeout(() => runAction(reload), 250);
 }
 
-onlyAvailable.addEventListener("change", () => runAction(reload));
+onlyAvailable.addEventListener("change", () => runAction(async () => renderBooks(await api(booksUrl()))));
+
+// Se busca mientras se escribe, pero se espera a que se deje de teclear.
+let searchTimer = null;
+search.addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => runAction(async () => renderBooks(await api(booksUrl()))), 250);
+});
 
 // --- Recibir un libro ---------------------------------------------------------
 
@@ -429,19 +522,26 @@ document.getElementById("add-book").addEventListener("click", () => openBookDial
 
 // ===========================================================================
 //  NUEVO PRÉSTAMO
-//  Se elige el libro (o llega elegido desde el catálogo), se ve hasta cuándo
-//  se presta y se escriben los datos de quien se lo lleva. Los cuatro campos
-//  se validan con los regex del servidor, primero aquí y después allí.
+//  Se elige el libro y el lector. Los datos del lector llegan solos de su
+//  cuenta, y se ve antes de registrar si se le puede prestar: el carnet tiene
+//  que estar vigente y no puede tener ya otro libro. El servidor vuelve a
+//  comprobarlo todo al registrar el préstamo.
 // ===========================================================================
 
 const loanDialog = document.getElementById("loan-dialog");
-const loanForm = document.getElementById("loan-form");
 const loanBook = document.getElementById("loan-book");
+const loanReader = document.getElementById("loan-reader");
 const loanSummary = document.getElementById("loan-summary");
+const loanSubmit = document.getElementById("loan-submit");
+const eligibility = document.getElementById("loan-eligibility");
+const READER_FIELDS = { name: "loan-name", dni: "loan-dni", phone: "loan-phone", email: "loan-email" };
+let loanBooks = [];  // los libros disponibles, pedidos al abrir el diálogo
 let dueRequest = 0;  // para ignorar una respuesta que llegue tarde
 
+const loanBookById = (id) => loanBooks.find((book) => book.id === id);
+
 async function renderLoanSummary() {
-  const book = bookById(Number(loanBook.value));
+  const book = loanBookById(Number(loanBook.value));
   if (!book) {
     loanSummary.innerHTML = "";
     return;
@@ -465,33 +565,64 @@ async function renderLoanSummary() {
   }
 }
 
-function openLoanDialog(bookId = null) {
-  resetForm(loanForm);
-  loanDialog.querySelector(".dialog-error").hidden = true;
-  const available = books.filter((book) => book.available);
-  loanBook.innerHTML = available.length
-    ? available.map((book) => `<option value="${book.id}">${escapeHtml(book.title)} — ${escapeHtml(book.author)}</option>`).join("")
-    : `<option value="">${t("loanform.no_books")}</option>`;
-  loanBook.disabled = available.length === 0;
-  document.getElementById("loan-submit").disabled = available.length === 0;
-  if (bookId) loanBook.value = String(bookId);
-  loanDialog.showModal();
-  (bookId ? document.getElementById("loan-borrower") : loanBook).focus();
-  renderLoanSummary();
+/** Rellena los datos del lector elegido y dice si se le puede prestar. */
+function renderLoanReader() {
+  const reader = readerById(Number(loanReader.value));
+  for (const [key, id] of Object.entries(READER_FIELDS)) {
+    document.getElementById(id).value = reader ? reader[key] ?? "" : "";
+  }
+  const reason = reader ? blockedReason(reader) : null;
+  eligibility.hidden = !reader;
+  if (reader) {
+    eligibility.className = "callout " + (reason ? "danger" : "ok");
+    eligibility.textContent = reason
+      || t("loanform.can_borrow", { date: formatDate(reader.card_expires) });
+  }
+  loanSubmit.disabled = !reader || Boolean(reason) || !loanBookById(Number(loanBook.value));
 }
 
-loanBook.addEventListener("change", renderLoanSummary);
+function readerOption(reader) {
+  const note = !reader.card_valid ? t("loanform.reader_option_expired")
+    : reader.active_loans.length ? t("loanform.reader_option_busy") : "";
+  const card = reader.card_number ? ` · ${reader.card_number}` : "";
+  return `<option value="${reader.id}">${escapeHtml(reader.name + card)}${note ? ` — ${escapeHtml(note)}` : ""}</option>`;
+}
 
-loanForm.addEventListener("submit", (event) => {
+async function openLoanDialog({ bookId = null, readerId = null } = {}) {
+  loanDialog.querySelector(".dialog-error").hidden = true;
+  // Todos los disponibles, aunque el catálogo esté filtrado por una búsqueda.
+  loanBooks = await api("/api/books?available=true");
+  loanBook.innerHTML = loanBooks.length
+    ? loanBooks.map((book) => `<option value="${book.id}">${escapeHtml(book.title)} — ${escapeHtml(book.author)}</option>`).join("")
+    : `<option value="">${t("loanform.no_books")}</option>`;
+  loanBook.disabled = loanBooks.length === 0;
+  if (bookId) loanBook.value = String(bookId);
+
+  loanReader.innerHTML = readers.length
+    ? `<option value="">${t("loanform.pick_reader")}</option>` + readers.map(readerOption).join("")
+    : `<option value="">${t("loanform.no_readers")}</option>`;
+  loanReader.disabled = readers.length === 0;
+  loanReader.value = readerId ? String(readerId) : "";
+
+  loanDialog.showModal();
+  (bookId ? loanReader : loanBook).focus();
+  renderLoanSummary();
+  renderLoanReader();
+}
+
+loanBook.addEventListener("change", () => {
+  renderLoanSummary();
+  renderLoanReader();
+});
+loanReader.addEventListener("change", renderLoanReader);
+
+document.getElementById("loan-form").addEventListener("submit", (event) => {
   event.preventDefault();
   runInDialog(loanDialog, async () => {
-    if (!formIsValid(loanForm)) return;
+    if (loanSubmit.disabled) return;
     const loan = await sendJson("POST", "/api/loans", {
       book_id: Number(loanBook.value),
-      borrower: document.getElementById("loan-borrower").value,
-      dni: document.getElementById("loan-dni").value,
-      email: document.getElementById("loan-email").value,
-      phone: document.getElementById("loan-phone").value,
+      reader_id: Number(loanReader.value),
     });
     loanDialog.close();
     notify(t("msg.loan_created", {
@@ -501,17 +632,96 @@ loanForm.addEventListener("submit", (event) => {
   });
 });
 
-document.getElementById("new-loan").addEventListener("click", () => openLoanDialog());
+document.getElementById("new-loan").addEventListener("click", () => runAction(() => openLoanDialog()));
+
+// ===========================================================================
+//  CUENTAS DE LECTORES
+//  Nombre, DNI, celular y correo se comprueban con los mismos regex que en el
+//  servidor. El carnet lo numera el servidor; aquí solo se elige hasta cuándo
+//  vale. Esos datos son los que luego rellenan cada préstamo.
+// ===========================================================================
+
+const readerDialog = document.getElementById("reader-dialog");
+const readerForm = document.getElementById("reader-form");
+const usernameInput = document.getElementById("reader-username");
+const passwordInput = document.getElementById("reader-password");
+const expiresInput = document.getElementById("reader-card-expires");
+const PROFILE_FIELDS = { name: "reader-name", dni: "reader-dni", phone: "reader-phone", email: "reader-email" };
+let editingReaderId = null;
+
+/** Hoy dentro de un año, en AAAA-MM-DD: la vigencia de un carnet nuevo. */
+function oneYearFromToday() {
+  const [year, month, day] = todayIso().split("-");
+  return `${Number(year) + 1}-${month}-${day === "29" && month === "02" ? "28" : day}`;
+}
+
+function openReaderDialog(reader = null) {
+  editingReaderId = reader ? reader.id : null;
+  resetForm(readerForm);
+  readerDialog.querySelector(".dialog-error").hidden = true;
+  for (const [key, id] of Object.entries(PROFILE_FIELDS)) {
+    document.getElementById(id).value = reader ? reader[key] ?? "" : "";
+  }
+  expiresInput.value = reader ? reader.card_expires : oneYearFromToday();
+  // El usuario no cambia; la contraseña, al editar, solo si se escribe una nueva.
+  usernameInput.value = reader ? reader.username : "";
+  usernameInput.disabled = Boolean(reader);
+  passwordInput.toggleAttribute("data-optional", Boolean(reader));
+  document.getElementById("reader-password-hint").textContent =
+    reader ? t("readerform.password_keep") : t("hint.password");
+  const cardLine = document.getElementById("reader-card-number");
+  cardLine.hidden = !reader;
+  cardLine.textContent = reader ? t("readerform.card_number", { number: reader.card_number }) : "";
+  document.getElementById("reader-dialog-title").textContent = reader
+    ? t("readerform.edit_heading", { name: reader.name })
+    : t("readerform.add_heading");
+  document.getElementById("reader-submit").textContent =
+    t(reader ? "readerform.submit_edit" : "readerform.submit_add");
+  readerDialog.showModal();
+  document.getElementById("reader-name").focus();
+}
+
+readerForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  runInDialog(readerDialog, async () => {
+    if (!formIsValid(readerForm)) return;
+    const data = Object.fromEntries(Object.entries(PROFILE_FIELDS)
+      .map(([key, id]) => [key, document.getElementById(id).value]));
+    data.card_expires = expiresInput.value;
+    data.password = passwordInput.value;
+    const editing = editingReaderId !== null;
+    const reader = editing
+      ? await sendJson("PUT", `/api/readers/${editingReaderId}`, data)
+      : await sendJson("POST", "/api/readers", { ...data, username: usernameInput.value });
+    readerDialog.close();
+    notify(editing
+      ? t("msg.reader_updated", { name: reader.name })
+      : t("msg.reader_created", { name: reader.name, card: reader.card_number }));
+    await reload();
+  });
+});
+
+async function renewCard(reader) {
+  const renewed = await api(`/api/readers/${reader.id}/renew`, { method: "POST" });
+  notify(t("msg.card_renewed", { name: renewed.name, date: formatDate(renewed.card_expires) }));
+  await reload();
+}
+
+document.getElementById("add-reader").addEventListener("click", () => openReaderDialog());
 
 // --- Botones de las listas ----------------------------------------------------
 // Se pintan de nuevo en cada recarga, así que se escucha en el documento y
 // cada botón dice qué hace con `data-action`.
 
 const ACTIONS = {
-  lend: (id) => openLoanDialog(id),
+  lend: (id) => openLoanDialog({ bookId: id }),
   return: (id) => receive(loanById(id)),
   edit: (id) => openBookDialog(bookById(id)),
   delete: (id) => removeBook(bookById(id)),
+  "lend-to": (id) => openLoanDialog({ readerId: id }),
+  renew: (id) => renewCard(readerById(id)),
+  "edit-reader": (id) => openReaderDialog(readerById(id)),
+  message: (id) => openConversation(readerById(id).username),
 };
 
 document.addEventListener("click", (event) => {
@@ -530,7 +740,7 @@ document.getElementById("activity-reset").addEventListener("click", () => runAct
 
 await start();
 enableLiveValidation(bookForm);
-enableLiveValidation(loanForm);
+enableLiveValidation(readerForm);
 showTab(location.hash.slice(1));
 await runAction(reload);
-startChat({ catalogChanged: reloadSoon });
+startChat({ refresh: reloadSoon });

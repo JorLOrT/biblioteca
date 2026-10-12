@@ -5,11 +5,15 @@ from typing import Optional
 
 from entities.loan import Loan
 
-# El JOIN trae el título y el ISBN del libro para mostrarlos sin otra consulta.
+# Los JOIN traen el título y el ISBN del libro, y el carnet del lector, para
+# mostrarlos sin otra consulta. LEFT: los préstamos anteriores a las cuentas
+# no tienen lector.
 SELECT_LOAN = """
-SELECT loans.*, books.title AS book_title, books.isbn AS book_isbn
+SELECT loans.*, books.title AS book_title, books.isbn AS book_isbn,
+       users.card_number AS reader_card
 FROM loans
 JOIN books ON books.id = loans.book_id
+LEFT JOIN users ON users.id = loans.reader_id
 """
 
 
@@ -27,12 +31,14 @@ class LoanRepository:
             book_id=row["book_id"],
             borrower=row["borrower"],
             loan_date=row["loan_date"],
+            reader_id=row["reader_id"],
             borrower_dni=row["borrower_dni"],
             borrower_email=row["borrower_email"],
             borrower_phone=row["borrower_phone"],
             return_date=row["return_date"],
             book_title=row["book_title"],
             book_isbn=row["book_isbn"],
+            reader_card=row["reader_card"],
         )
 
     def _get_one(self, condition: str, params: tuple[int]) -> Optional[Loan]:
@@ -53,6 +59,14 @@ class LoanRepository:
         ).fetchall()
         return [self._to_entity(row) for row in rows]
 
+    def get_active_by_reader(self, reader_id: int) -> list[Loan]:
+        """Los libros que tiene ahora un lector."""
+        rows = self._db.execute(
+            SELECT_LOAN + " WHERE loans.reader_id = ? AND loans.return_date IS NULL",
+            (reader_id,),
+        ).fetchall()
+        return [self._to_entity(row) for row in rows]
+
     def get_by_id(self, loan_id: int) -> Optional[Loan]:
         return self._get_one(" WHERE loans.id = ?", (loan_id,))
 
@@ -64,10 +78,12 @@ class LoanRepository:
 
     def create(self, loan: Loan) -> Loan:
         cursor = self._db.execute(
-            "INSERT INTO loans (book_id, borrower, borrower_dni, borrower_email, "
-            "borrower_phone, loan_date, return_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (loan.book_id, loan.borrower, loan.borrower_dni, loan.borrower_email,
-             loan.borrower_phone, loan.loan_date, loan.return_date),
+            "INSERT INTO loans (book_id, reader_id, borrower, borrower_dni, "
+            "borrower_email, borrower_phone, loan_date, return_date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (loan.book_id, loan.reader_id, loan.borrower, loan.borrower_dni,
+             loan.borrower_email, loan.borrower_phone, loan.loan_date,
+             loan.return_date),
         )
         loan.id = cursor.lastrowid
         return loan

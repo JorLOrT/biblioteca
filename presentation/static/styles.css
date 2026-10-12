@@ -53,6 +53,16 @@ ul { margin: 0; padding: 0; list-style: none; }
 .muted { color: var(--muted); }
 .small { font-size: .8125rem; }
 
+/* Fuera de la vista, pero lo leen los lectores de pantalla. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 /* --- Barra superior -------------------------------------------------------- */
 
 .topbar {
@@ -113,7 +123,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 
 .user-text { display: flex; flex-direction: column; line-height: 1.2; }
-.user-text strong { font-size: .875rem; }
+.user-text strong { font-size: .875rem; white-space: nowrap; }
 .user-text small { color: var(--muted); font-size: .75rem; }
 
 .avatar {
@@ -165,6 +175,8 @@ ul { margin: 0; padding: 0; list-style: none; }
 /* Acción frecuente que no debe pesar tanto como la principal. */
 .btn.tonal { background: var(--brand-soft); color: var(--brand); }
 .btn.tonal:hover { background: #d3eae2; }
+.btn.tonal:disabled,
+.btn.tonal:disabled:hover { background: var(--surface-2); color: var(--border-strong); }
 
 .btn.danger { background: var(--danger); color: #fff; }
 .btn.danger:hover { background: #a42b22; }
@@ -501,7 +513,8 @@ td .title, td .meta { display: block; }
 .book-card { display: flex; flex-direction: column; gap: 4px; }
 .book-card .cover-wrap { position: relative; margin-bottom: 6px; }
 .book-card .title { line-height: 1.3; }
-.book-card .pill { margin-top: 2px; }
+/* En una tarjeta estrecha, «Debía volver el …» tiene que poder partirse. */
+.book-card .pill { margin-top: 2px; border-radius: 10px; white-space: normal; }
 .book-card .btn { margin-top: auto; }
 .book-card .pill + .btn { margin-top: 10px; }
 
@@ -566,6 +579,115 @@ td .title, td .meta { display: block; }
 
 .terms-result .late { color: var(--danger); }
 .terms-result .on-time { color: var(--ok); }
+
+/* --- Búsqueda en el catálogo ------------------------------------------------------------ */
+
+.search {
+  position: relative;
+  flex: 1 1 220px;
+  max-width: 340px;
+}
+
+.search svg {
+  position: absolute;
+  top: 50%;
+  left: 11px;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.search input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px 0 34px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: .875rem;
+}
+
+.search input:focus { background: var(--surface); }
+
+/* --- Lectores (bibliotecario) ------------------------------------------------------------- */
+
+.reader-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.reader-row:last-child { border-bottom: none; }
+.reader-row > .avatar { width: 40px; height: 40px; font-size: 1rem; }
+.reader-status { display: flex; flex-direction: column; gap: 4px; }
+.reader-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.reader-actions .btn.primary { min-width: 92px; margin-right: 4px; }
+
+.role-tag {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: .6875rem;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+
+.role-tag.reader { background: var(--surface-2); color: var(--muted); }
+
+/* Datos del lector en el préstamo: llegan de su cuenta, no se escriben. */
+.reader-data input[readonly] {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.reader-data input[readonly]:focus { outline: none; }
+
+/* --- Mi carnet (lector) --------------------------------------------------------------------- */
+
+.my-card-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 28px;
+  padding: 16px 20px;
+}
+
+.my-card-who { display: flex; align-items: center; gap: 12px; }
+.my-card-who .avatar { width: 40px; height: 40px; font-size: 1rem; }
+.my-card-state { display: flex; flex-direction: column; gap: 2px; }
+
+.my-card-loan {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 260px;
+  font-size: .875rem;
+}
+
+.my-card-loan.late { color: var(--danger); font-weight: 600; }
+
+.my-card-note {
+  flex-basis: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: .8125rem;
+  font-weight: 600;
+}
 
 /* --- Interruptor «Solo disponibles» --------------------------------------------------- */
 
@@ -843,6 +965,83 @@ input:disabled { background: var(--surface-2); color: var(--muted); }
 .bubble .time { margin-left: 4px; color: var(--muted); font-weight: 400; }
 .bubble .text { font-size: .875rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 
+/* Conversaciones del bibliotecario: una por lector. */
+.conversations {
+  flex: 0 1 auto;
+  max-height: 38%;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--border);
+}
+
+.conversation {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 16px;
+  border: none;
+  border-left: 3px solid transparent;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.conversation:hover { background: var(--surface-2); }
+.conversation.active { border-left-color: var(--brand); background: var(--brand-soft); }
+
+.conversation-avatar { position: relative; flex: none; }
+.conversation-avatar .avatar { width: 32px; height: 32px; font-size: .8125rem; }
+
+.status-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+
+.status-dot.online { background: #22a06b; }
+
+.conversation-text { display: flex; flex: 1; flex-direction: column; min-width: 0; line-height: 1.3; }
+.conversation-text strong { font-size: .875rem; }
+
+.conversation-text small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: .75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation.unread .conversation-text small { color: var(--text); font-weight: 600; }
+.conversation .time { color: var(--muted); font-size: .6875rem; }
+
+.unread-count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  font-size: .6875rem;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
+.chat-with {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: .75rem;
+  font-weight: 600;
+}
+
 .chat-send {
   display: flex;
   gap: 8px;
@@ -948,6 +1147,10 @@ input:disabled { background: var(--surface-2); color: var(--muted); }
   .layout { padding: 16px 12px; gap: 16px; }
   .panel-head { padding: 14px 16px; }
 
+  /* Tres pestañas no caben a lo ancho: se compactan y, si hace falta, se deslizan. */
+  .tabs { overflow-x: auto; scrollbar-width: none; }
+  .tab { flex: none; gap: 6px; padding: 10px 8px; }
+
   /* Los contadores, en una tira que se desliza en lugar de tres filas. */
   .stats { display: flex; overflow-x: auto; scrollbar-width: none; }
   .stat { flex: 0 0 auto; min-width: 110px; }
@@ -971,6 +1174,17 @@ input:disabled { background: var(--surface-2); color: var(--muted); }
   .book-actions { grid-column: 1 / -1; justify-content: flex-start; flex-wrap: wrap; }
 
   .book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 14px; padding: 16px; }
+
+  .search { flex-basis: 100%; max-width: none; order: 5; }
+
+  .reader-row {
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 8px 12px;
+    padding: 14px 16px;
+  }
+  .reader-status { grid-column: 2; }
+  .reader-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .my-card-body { padding: 14px 16px; }
 
   /* El historial tiene demasiadas columnas: cada fila pasa a ser una ficha. */
   .history-table thead { display: none; }

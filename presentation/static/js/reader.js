@@ -1,23 +1,68 @@
 // VISTA DEL LECTOR
 //
-// El catálogo para consultar: qué hay, qué está disponible y cuándo vuelve lo
-// que está prestado. El lector no presta: guarda lo que le interesa en su
-// lista y se lo pide al bibliotecario por el chat, que está siempre al lado.
+// Arriba, su carnet: si está vigente y qué libro tiene ahora. Debajo, el
+// catálogo para consultar (con búsqueda): qué hay, qué está disponible y
+// cuándo vuelve lo prestado. El lector no presta: guarda lo que le interesa en
+// su lista y se lo pide al bibliotecario por su chat privado, siempre al lado.
 
 import {
-  api, coverHtml, daysUntil, escapeHtml, formatDate, money, notify, runAction, start, t, tn,
-  todayIso,
+  api, avatarColor, coverHtml, daysUntil, escapeHtml, formatDate, money, notify, runAction,
+  start, t, tn, todayIso,
 } from "./core.js";
 import { prefillChat, startChat } from "./chat.js";
 
 let books = [];
 let wishlist = { book_ids: [], books: [], max: 0 };
+let me = null;  // su cuenta: carnet, vigencia y préstamos (de /api/readers/me)
 
 const onlyAvailable = document.getElementById("only-available");
+const search = document.getElementById("book-search");
 
-// Un libro puede estar en la lista aunque el filtro lo oculte del catálogo.
+// Un libro puede estar en la lista aunque la búsqueda lo oculte del catálogo.
 const findBook = (id) => books.find((book) => book.id === id)
   || wishlist.books.find((book) => book.id === id);
+
+// --- Mi carnet -----------------------------------------------------------------
+
+/** Por qué no puede pedir un libro ahora, o null si puede. */
+function blockedNote() {
+  if (!me) return null;
+  if (!me.card_valid) return t("me.card_expired_note");
+  if (!me.can_borrow) return t("me.has_loan_note");
+  return null;
+}
+
+function loanText(loan) {
+  return loan.days_late > 0
+    ? t("me.loan_late", { title: escapeHtml(loan.book_title), date: formatDate(loan.due_date), fine: money(loan.fine) })
+    : t("me.loan", { title: escapeHtml(loan.book_title), date: formatDate(loan.due_date) });
+}
+
+function renderMyCard() {
+  const loan = me.active_loans[0];
+  const card = me.card_valid
+    ? `<span class="pill ok">${t("reader.card_valid")}</span>
+       <span class="meta">${t("reader.valid_until", { date: formatDate(me.card_expires) })}</span>`
+    : `<span class="pill danger">${t("reader.card_expired")}</span>
+       <span class="meta late">${t("reader.expired_on", { date: formatDate(me.card_expires) })}</span>`;
+  const note = blockedNote();
+  document.getElementById("my-card-body").innerHTML = `
+    <div class="my-card-who">
+      <span class="avatar" style="background:${avatarColor(me.username)}">${escapeHtml(me.name.charAt(0))}</span>
+      <div>
+        <p class="title">${escapeHtml(me.name)}</p>
+        <p class="meta">${t("reader.card", { number: escapeHtml(me.card_number || "—") })}</p>
+      </div>
+    </div>
+    <div class="my-card-state">${card}</div>
+    <div class="my-card-loan ${loan && loan.days_late > 0 ? "late" : ""}">
+      ${loan ? coverHtml(loan, "xs") : ""}
+      <p>${loan ? loanText(loan) : t("me.no_loan")}</p>
+    </div>
+    ${note ? `<p class="my-card-note">${note}</p>` : ""}`;
+}
+
+// --- Catálogo ------------------------------------------------------------------
 
 /** Disponible, o cuándo vuelve. Nunca a quién está prestado. */
 function availability(book) {
@@ -37,9 +82,13 @@ function starButton(book) {
                   aria-pressed="${wished}" title="${label}" aria-label="${label}">${wished ? "★" : "☆"}</button>`;
 }
 
+/** «Pedir» deja el mensaje escrito en el chat. Si ahora no se le puede
+ *  prestar nada, el botón está bloqueado y dice por qué. */
 function requestButton(book, extra = "") {
+  const note = blockedNote();
+  const title = escapeHtml(note || t("action.request_title"));
   return `<button class="btn tonal sm ${extra}" data-action="request" data-id="${book.id}"
-                  title="${escapeHtml(t("action.request_title"))}">${t("action.request")}</button>`;
+                  title="${title}" ${note ? "disabled" : ""}>${t("action.request")}</button>`;
 }
 
 function bookCard(book) {
@@ -57,13 +106,20 @@ function bookCard(book) {
     </li>`;
 }
 
+function emptyCatalogText() {
+  const query = search.value.trim();
+  if (query) return t("catalog.no_results", { query: escapeHtml(query) });
+  return t(onlyAvailable.checked ? "catalog.empty_available" : "catalog.empty");
+}
+
 function renderCatalog() {
-  const empty = onlyAvailable.checked ? "catalog.empty_available" : "catalog.empty";
   document.getElementById("book-grid").innerHTML = books.length
     ? books.map(bookCard).join("")
-    : `<li class="empty">${t(empty)}</li>`;
+    : `<li class="empty">${emptyCatalogText()}</li>`;
   document.getElementById("books-count").textContent = books.length;
 }
+
+// --- Mi lista ----------------------------------------------------------------------
 
 function wishItem(book) {
   const state = availability(book);
@@ -89,27 +145,52 @@ function renderWishlist() {
   document.getElementById("wishlist-clear").hidden = wishlist.books.length === 0;
 }
 
+// --- Recarga -------------------------------------------------------------------------
+
+/** El catálogo con la búsqueda y el filtro: los aplica el servidor. */
+function booksUrl() {
+  const params = new URLSearchParams();
+  const query = search.value.trim();
+  if (query) params.set("q", query);
+  if (onlyAvailable.checked) params.set("available", "true");
+  return "/api/books?" + params;
+}
+
 async function reload() {
-  const [bookList, saved] = await Promise.all([
-    // El filtro lo aplica el servidor: GET /api/books?available=true.
-    api(onlyAvailable.checked ? "/api/books?available=true" : "/api/books"),
+  const [bookList, saved, account] = await Promise.all([
+    api(booksUrl()),
     api("/api/wishlist"),
+    api("/api/readers/me"),
   ]);
   books = bookList;
   wishlist = saved;
+  me = account;
+  renderMyCard();
   renderCatalog();
   renderWishlist();
 }
 
-// El servidor avisa por el WebSocket cuando se presta o se devuelve un libro:
-// la disponibilidad se actualiza sola, sin recargar la página.
+async function reloadBooks() {
+  books = await api(booksUrl());
+  renderCatalog();
+}
+
+// El servidor avisa por el WebSocket cuando se presta o se devuelve un libro,
+// o cuando le renuevan el carnet: todo se actualiza sin recargar la página.
 let reloadTimer = null;
 function reloadSoon() {
   clearTimeout(reloadTimer);
   reloadTimer = setTimeout(() => runAction(reload), 250);
 }
 
-onlyAvailable.addEventListener("change", () => runAction(reload));
+onlyAvailable.addEventListener("change", () => runAction(reloadBooks));
+
+// Se busca mientras se escribe, pero se espera a que se deje de teclear.
+let searchTimer = null;
+search.addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => runAction(reloadBooks), 250);
+});
 
 // --- Acciones -------------------------------------------------------------------
 
@@ -192,4 +273,4 @@ returned.addEventListener("change", () => runAction(updateTerms));
 await start();
 await runAction(reload);
 runAction(startTerms);
-startChat({ catalogChanged: reloadSoon });
+startChat({ refresh: reloadSoon });

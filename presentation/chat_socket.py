@@ -7,9 +7,13 @@ servidor puede enviar un mensaje sin que nadie se lo haya pedido. Es lo que
 permite que un mensaje escrito en un navegador aparezca en otro al instante,
 sin recargar ni preguntar cada pocos segundos.
 
-Por esa misma conexión el servidor avisa de que el catálogo cambió (un
-préstamo, una devolución, un libro nuevo), y cada navegador vuelve a pedir los
-datos: el lector ve que un libro se prestó sin tener que recargar la página.
+El chat es privado: cada mensaje se entrega solo a quien puede leerlo (el
+lector de esa conversación y los bibliotecarios). Lo decide el negocio,
+`chat_service.can_read`; esta capa solo lo cumple al repartir.
+
+Por la misma conexión el servidor avisa de que algo cambió (un préstamo, una
+devolución, un libro o un lector), y cada navegador vuelve a pedir los datos:
+el lector ve que un libro se prestó sin tener que recargar la página.
 
 Para entrar hay que haber iniciado sesión: la identidad en el chat es la de la
 cuenta, así que el bibliotecario está siempre identificado como tal y no hay
@@ -38,7 +42,7 @@ from flask_sock import Sock
 from simple_websocket import ConnectionClosed, Server
 
 from business import chat_service
-from business.chat_service import Identity
+from business.chat_service import ChatMessage, Identity
 from business.exceptions import BusinessError
 from entities.user import LIBRARIAN, READER
 from presentation.auth import current_user
@@ -73,6 +77,10 @@ class _Connection:
     # compresión pierde el orden) y el navegador las recibe rotas.
     send_lock: threading.Lock = field(default_factory=threading.Lock)
 
+    @property
+    def is_librarian(self) -> bool:
+        return self.identity["role"] == LIBRARIAN
+
     def send(self, payload: dict[str, object]) -> bool:
         """Envía un objeto JSON. Devuelve False si la conexión ya está cerrada."""
         try:
@@ -88,54 +96,78 @@ _lock = threading.Lock()
 _clients: set[_Connection] = set()
 
 
-def _broadcast(
-    payload: dict[str, object], exclude: Optional[_Connection] = None
-) -> None:
-    """Envía el mismo mensaje a todas las conexiones abiertas.
+# Qué mandarle a cada conexión; None si nada.
+_PayloadFor = Callable[[_Connection], Optional[dict[str, object]]]
 
-    Esto es lo que un endpoint HTTP normal no puede hacer: hablar con clientes
-    que no han preguntado nada.
+
+def _send_each(payload_for: _PayloadFor) -> None:
+    """Envía a cada conexión lo que le toque (None: nada).
+
+    Es lo que un endpoint HTTP normal no puede hacer: hablar con clientes que
+    no han preguntado nada.
     """
     with _lock:
-        recipients = [client for client in _clients if client is not exclude]
+        recipients = list(_clients)
 
-    dropped = [client for client in recipients if not client.send(payload)]
+    dropped = []
+    for client in recipients:
+        payload = payload_for(client)
+        if payload is not None and not client.send(payload):
+            dropped.append(client)
 
     if dropped:
         with _lock:
             _clients.difference_update(dropped)
 
 
-def _presence() -> dict[str, object]:
-    """Cuántas cuentas de cada papel están conectadas.
+def _deliver(message: ChatMessage) -> None:
+    """Un mensaje, solo a quien puede leerlo: su lector y los bibliotecarios."""
+    payload: dict[str, object] = {"type": "message", "message": message}
+    _send_each(lambda client: payload
+               if chat_service.can_read(client.identity, message) else None)
 
-    Se cuentan cuentas, no pestañas: un lector con dos pestañas abiertas es
-    un lector.
+
+def _presence_for(client: _Connection) -> dict[str, object]:
+    """Quién está al otro lado, según quién pregunte.
+
+    Al bibliotecario le importa qué lectores están conectados; al lector, solo
+    si hay un bibliotecario para contestarle (no ve a los demás lectores). Se
+    cuentan cuentas, no pestañas.
     """
     with _lock:
-        identities = [client.identity for client in _clients]
+        identities = [other.identity for other in _clients]
+    librarians = {i["username"] for i in identities if i["role"] == LIBRARIAN}
+    presence: dict[str, object] = {"librarians": len(librarians)}
+    if client.is_librarian:
+        presence["readers"] = sorted(
+            {i["username"] for i in identities if i["role"] == READER}
+        )
+    return presence
 
-    def accounts(role: str) -> int:
-        return len({i["username"] for i in identities if i["role"] == role})
 
-    return {"librarians": accounts(LIBRARIAN), "readers": accounts(READER)}
+def _announce_presence() -> None:
+    _send_each(lambda client: {"type": "presence", **_presence_for(client)})
 
 
-def notify_catalog_changed() -> None:
-    """Avisa a todos los navegadores de que el catálogo o los préstamos cambiaron.
+def notify_data_changed() -> None:
+    """Avisa a todos los navegadores de que el catálogo, los préstamos o los
+    lectores cambiaron.
 
     Solo dice QUE cambió, no qué: cada navegador vuelve a pedir lo que su
     papel tiene permitido ver. Así un lector nunca recibe por aquí los datos
-    de un préstamo.
+    de un préstamo ajeno.
     """
-    _broadcast({"type": "catalog"})
+    _send_each(lambda client: {"type": "refresh"})
 
 
 # --- Un manejador por cada tipo de mensaje que manda el navegador ----------
 
 def _message(connection: _Connection, data: dict[str, object]) -> None:
-    message = chat_service.publish(connection.identity, text_field(data, "text"))
-    _broadcast({"type": "message", "message": message})
+    # `to` solo lo usa el bibliotecario: el lector escribe siempre en la suya.
+    message = chat_service.publish(
+        connection.identity, text_field(data, "text"), text_field(data, "to")
+    )
+    _deliver(message)
 
 
 _HANDLERS: dict[str, Callable[[_Connection, dict[str, object]], None]] = {
@@ -147,14 +179,14 @@ def _on_connect(connection: _Connection) -> None:
     with _lock:
         _clients.add(connection)
 
-    # Quien entra recibe la conversación anterior, para no llegar a una sala
-    # en blanco, y sabe quién más está conectado.
+    # Quien entra recibe las conversaciones que puede leer, para no llegar a
+    # una sala en blanco, y sabe quién más está conectado.
     connection.send({
         "type": "welcome",
-        "history": chat_service.history(),
-        **_presence(),
+        "conversations": chat_service.history_for(connection.identity),
+        **_presence_for(connection),
     })
-    _broadcast({"type": "presence", **_presence()}, exclude=connection)
+    _announce_presence()
 
 
 def _on_message(connection: _Connection, raw: Union[str, bytes]) -> None:
@@ -179,7 +211,7 @@ def _on_message(connection: _Connection, raw: Union[str, bytes]) -> None:
 def _on_disconnect(connection: _Connection) -> None:
     with _lock:
         _clients.discard(connection)
-    _broadcast({"type": "presence", **_presence()})
+    _announce_presence()
 
 
 # --- Apertura y cierre -------------------------------------------------------

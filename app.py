@@ -28,6 +28,7 @@ from presentation.error_handlers import register_error_handlers
 from presentation.home_controller import home_bp
 from presentation.i18n_controller import i18n_bp
 from presentation.loan_controller import loan_bp
+from presentation.reader_controller import reader_bp
 from presentation.tools_controller import tools_bp
 from presentation.validation_controller import validation_bp
 from presentation.wishlist_controller import wishlist_bp
@@ -83,6 +84,7 @@ def create_app() -> Flask:
     app.register_blueprint(auth_bp)        # iniciar y cerrar sesión
     app.register_blueprint(book_bp)
     app.register_blueprint(loan_bp)
+    app.register_blueprint(reader_bp)      # cuentas y carnets de los lectores
     app.register_blueprint(i18n_bp)        # idioma (i18n)
     app.register_blueprint(validation_bp)  # patrones regex para el navegador
     app.register_blueprint(tools_bp)       # endpoints STATELESS

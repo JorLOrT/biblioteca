@@ -6,7 +6,7 @@ from flask import Blueprint, Response, jsonify, request
 
 from business.book_service import BookService
 from presentation.auth import librarian_required, login_required
-from presentation.chat_socket import notify_catalog_changed
+from presentation.chat_socket import notify_data_changed
 from presentation.i18n import translate
 from presentation.json_input import request_json, text_field
 
@@ -37,8 +37,9 @@ def _book_form() -> _BookForm:
 
 @book_bp.get("")
 def list_books() -> Response:
+    """GET /api/books?q=garcia&available=true — busca y filtra en el servidor."""
     only_available = request.args.get("available") == "true"
-    books = service.list_books(only_available=only_available)
+    books = service.list_books(only_available, request.args.get("q", ""))
     return jsonify([book.to_dict() for book in books])
 
 
@@ -51,7 +52,7 @@ def get_book(book_id: int) -> Response:
 def create_book() -> tuple[Response, int]:
     librarian_required()
     book = service.create_book(**_book_form())
-    notify_catalog_changed()
+    notify_data_changed()
     return jsonify(book.to_dict()), 201
 
 
@@ -59,7 +60,7 @@ def create_book() -> tuple[Response, int]:
 def update_book(book_id: int) -> Response:
     librarian_required()
     book = service.update_book(book_id, **_book_form())
-    notify_catalog_changed()
+    notify_data_changed()
     return jsonify(book.to_dict())
 
 
@@ -67,5 +68,5 @@ def update_book(book_id: int) -> Response:
 def delete_book(book_id: int) -> Response:
     librarian_required()
     service.delete_book(book_id)
-    notify_catalog_changed()
+    notify_data_changed()
     return jsonify({"message": translate("msg.book_deleted")})

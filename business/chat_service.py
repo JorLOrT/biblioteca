@@ -1,29 +1,34 @@
-"""Chat de la biblioteca — reglas y memoria de la conversación.
+"""Chat de la biblioteca — reglas y memoria de las conversaciones.
 
-Quien escribe es siempre una cuenta con la sesión iniciada: el bibliotecario o
-un lector. La identidad sale de esa cuenta y no de lo que mande el navegador,
-así que nadie puede hacerse pasar por el bibliotecario. El texto del mensaje
-se comprueba con la misma expresión regular de `validators` que el resto.
+El chat es PRIVADO entre cada lector y la biblioteca: cada lector tiene una
+sola conversación, que se identifica con su usuario. El lector solo escribe y
+lee en la suya; el bibliotecario ve todas y elige en cuál contesta. Ningún
+lector ve lo que escribe otro.
 
-El historial vive en la memoria del proceso, igual que los contadores de
-`activity_service`: es estado compartido por todos los conectados y se pierde
-al reiniciar el servidor. Guardarlo en SQLite sería fácil, pero para un chat de
-sala única no aporta nada y complicaría el ejemplo.
+Quien escribe es siempre una cuenta con la sesión iniciada. La identidad sale
+de esa cuenta y no de lo que mande el navegador, así que nadie puede hacerse
+pasar por el bibliotecario ni escribir en la conversación de otro. El texto se
+comprueba con la misma expresión regular de `validators` que el resto.
+
+Las conversaciones viven en la memoria del proceso, igual que los contadores
+de `activity_service`: se pierden al reiniciar el servidor.
 
 Esta capa NO sabe qué es un WebSocket. Recibe datos y devuelve datos; quien
 abre la conexión y reparte los mensajes es la capa de presentación.
 """
 
-import hashlib
 import itertools
 import threading
 from collections import deque
 from datetime import datetime
 from typing import TypedDict
 
+from business.exceptions import BusinessError
 from business.validators import validate_field
+from data_access.unit_of_work import unit_of_work
+from entities.user import LIBRARIAN, READER
 
-MAX_HISTORY = 80  # mensajes que se recuerdan; los más viejos se descartan
+MAX_HISTORY = 80  # mensajes que se recuerdan por conversación
 
 
 class Identity(TypedDict):
@@ -32,71 +37,82 @@ class Identity(TypedDict):
     username: str
     nickname: str
     role: str
-    initial: str
-    color: str
 
 
 class ChatMessage(TypedDict):
     id: int
+    # El usuario del lector dueño de la conversación.
+    conversation: str
     username: str
     nickname: str
     role: str
-    initial: str
-    color: str
     text: str
     at: str
 
 
 _lock = threading.Lock()
-# Con `maxlen`, al llegar al tope el mensaje más viejo sale solo.
-_history: deque[ChatMessage] = deque(maxlen=MAX_HISTORY)
+# Una cola por conversación. Con `maxlen`, el mensaje más viejo sale solo.
+_conversations: dict[str, deque[ChatMessage]] = {}
 _next_id = itertools.count(1)
-
-
-def _color_for(username: str) -> str:
-    """Un color estable por cuenta, derivado de su nombre de usuario.
-
-    Siempre el mismo para la misma cuenta, así cada quien se reconoce en la
-    conversación sin necesidad de guardar nada. El hash solo reparte colores,
-    no protege nada; de ahí `usedforsecurity=False`.
-    """
-    digest = hashlib.md5(username.encode("utf-8"), usedforsecurity=False).hexdigest()
-    hue = int(digest[:4], 16) % 360
-    return f"hsl({hue}, 55%, 40%)"
 
 
 def identity_for(username: str, display_name: str, role: str) -> Identity:
     """La identidad en el chat de una cuenta que ya inició sesión."""
-    return {
-        "username": username,
-        "nickname": display_name,
-        "role": role,
-        "initial": display_name[:1].upper(),
-        "color": _color_for(username),
-    }
+    return {"username": username, "nickname": display_name, "role": role}
 
 
-def publish(identity: Identity, text: str) -> ChatMessage:
-    """Valida un mensaje, lo guarda en el historial y lo devuelve."""
+def _is_reader(username: str) -> bool:
+    with unit_of_work() as uow:
+        user = uow.users.get_by_username(username)
+    return user is not None and user.role == READER
+
+
+def _conversation_for(identity: Identity, to: str) -> str:
+    """En qué conversación se escribe.
+
+    El lector, siempre en la suya: lo que mande en `to` no cuenta. El
+    bibliotecario, en la del lector que elija, que tiene que existir.
+    """
+    if identity["role"] != LIBRARIAN:
+        return identity["username"]
+    if not to or not _is_reader(to):
+        raise BusinessError("error.chat_no_reader")
+    return to
+
+
+def publish(identity: Identity, text: str, to: str = "") -> ChatMessage:
+    """Valida un mensaje, lo guarda en su conversación y lo devuelve."""
     content = validate_field("message", text)
+    conversation = _conversation_for(identity, to)
 
     with _lock:
         message: ChatMessage = {
             "id": next(_next_id),
+            "conversation": conversation,
             "username": identity["username"],
             "nickname": identity["nickname"],
             "role": identity["role"],
-            "initial": identity["initial"],
-            "color": identity["color"],
             "text": content,
             "at": datetime.now().strftime("%H:%M"),
         }
-        _history.append(message)
+        queue = _conversations.setdefault(conversation, deque(maxlen=MAX_HISTORY))
+        queue.append(message)
 
     return message
 
 
-def history() -> list[ChatMessage]:
-    """Copia de la conversación, para quien acaba de entrar."""
+def can_read(identity: Identity, message: ChatMessage) -> bool:
+    """Regla de privacidad: el bibliotecario lee todo; un lector, solo lo suyo."""
+    if identity["role"] == LIBRARIAN:
+        return True
+    return message["conversation"] == identity["username"]
+
+
+def history_for(identity: Identity) -> dict[str, list[ChatMessage]]:
+    """Las conversaciones que puede leer quien acaba de conectarse."""
     with _lock:
-        return list(_history)
+        return {
+            owner: list(messages)
+            for owner, messages in _conversations.items()
+            if identity["role"] == LIBRARIAN or owner == identity["username"]
+        }

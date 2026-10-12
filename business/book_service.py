@@ -11,6 +11,7 @@ from data_access.unit_of_work import UnitOfWork, unit_of_work
 from entities.book import Book
 
 FIRST_PRINTED_YEAR = 1450  # imprenta de Gutenberg
+MAX_SEARCH = 100           # caracteres que se usan de una búsqueda
 
 
 def require_book(uow: UnitOfWork, book_id: int) -> Book:
@@ -65,9 +66,10 @@ def _validated_book(title: str, author: str, year: str, isbn: str) -> Book:
 class BookService:
     """Valida los datos de un libro y coordina su persistencia."""
 
-    def list_books(self, only_available: bool = False) -> list[Book]:
+    def list_books(self, only_available: bool = False, search: str = "") -> list[Book]:
+        """El catálogo; solo lo disponible, o lo que coincida con `search`."""
         with unit_of_work() as uow:
-            books = uow.books.get_all(only_available=only_available)
+            books = uow.books.get_all(only_available, search.strip()[:MAX_SEARCH])
             return with_due_dates(uow, books)
 
     def get_book(self, book_id: int) -> Book:

@@ -139,10 +139,12 @@ export function daysUntil(iso) {
 // toma de business/validators.py. Así el navegador y el servidor aplican
 // exactamente la misma regla y no pueden quedar desincronizados.
 
-/** ¿Encaja el valor de este campo con su expresión regular? */
+/** ¿Encaja el valor de este campo con su expresión regular? Un campo con
+ *  `data-optional` también vale vacío (la contraseña, al editar un lector). */
 export function fieldIsValid(input) {
   const pattern = rules[input.dataset.rule];
   if (!pattern) return true;
+  if ("optional" in input.dataset && !input.value.trim()) return true;
   return new RegExp(pattern).test(input.value.trim());
 }
 
@@ -205,6 +207,9 @@ function hueFor(text) {
   for (const char of String(text)) hash = (hash * 31 + char.codePointAt(0)) % 360;
   return hash;
 }
+
+/** Un color estable por persona: el mismo usuario, el mismo color siempre. */
+export const avatarColor = (username) => `hsl(${hueFor(username)}, 50%, 40%)`;
 
 function placeholderCover(title, size) {
   const initial = escapeHtml(String(title || "?").trim().charAt(0).toUpperCase());

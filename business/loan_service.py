@@ -1,7 +1,8 @@
 """Reglas de negocio de los préstamos.
 
 Aquí vive la regla central de la biblioteca: un libro solo se puede prestar
-si está disponible.
+si está disponible, y solo a un lector con el carnet vigente que no tenga ya
+otro libro (`lending_rules`).
 """
 
 from datetime import date
@@ -9,47 +10,16 @@ from datetime import date
 from business import activity_service
 from business.book_service import require_book
 from business.exceptions import BusinessError, NotFoundError
-from business.library_calculator import calculate_due_date, calculate_fine
-from business.validators import validate_field
+from business.lending_rules import (
+    ensure_can_borrow,
+    require_reader,
+    with_due_info,
+    with_reader_status,
+)
 from data_access.unit_of_work import UnitOfWork, unit_of_work
 from entities.book import Book
 from entities.loan import Loan
-
-
-def _with_due_info(loan: Loan, today: str) -> Loan:
-    """Completa el préstamo con su vencimiento y su posible multa.
-
-    Aquí se usan las dos funciones STATELESS de `library_calculator`: se les
-    pasa todo lo que necesitan como argumentos y devuelven un resultado sin
-    guardar nada.
-    """
-    loan.due_date = calculate_due_date(loan.loan_date)
-    # Si ya se devolvió se compara con la fecha de devolución; si sigue
-    # prestado, con la de hoy.
-    penalty = calculate_fine(loan.due_date, loan.return_date or today)
-    loan.days_late = penalty["days_late"]
-    loan.fine = penalty["fine"]
-    return loan
-
-
-def _validated_loan(
-    book_id: int, borrower: str, dni: str, email: str, phone: str
-) -> Loan:
-    """Comprueba los datos del prestatario y prepara el préstamo de hoy.
-
-    Los cuatro datos se comprueban con las expresiones regulares de
-    `validators`, en el servidor: el navegador puede saltarse su propia
-    validación, esta no.
-    """
-    return Loan(
-        id=None,
-        book_id=book_id,
-        borrower=validate_field("borrower", borrower),
-        borrower_dni=validate_field("dni", dni),
-        borrower_email=validate_field("email", email),
-        borrower_phone=validate_field("phone", phone),
-        loan_date=date.today().isoformat(),
-    )
+from entities.user import User
 
 
 def _require_available_book(uow: UnitOfWork, book_id: int) -> Book:
@@ -77,6 +47,27 @@ def _require_active_loan(uow: UnitOfWork, loan_id: int) -> Loan:
     return loan
 
 
+def _loan_for(reader: User, book: Book, today: str) -> Loan:
+    """El préstamo de hoy, con los datos del lector copiados de su cuenta.
+
+    Se copian (y no solo se enlazan) para que el préstamo conserve con quién
+    se hizo aunque el lector cambie después su celular o su correo.
+    """
+    return Loan(
+        id=None,
+        book_id=book.id or 0,
+        reader_id=reader.id,
+        borrower=reader.display_name,
+        borrower_dni=reader.dni,
+        borrower_email=reader.email,
+        borrower_phone=reader.phone,
+        loan_date=today,
+        book_title=book.title,
+        book_isbn=book.isbn,
+        reader_card=reader.card_number,
+    )
+
+
 class LoanService:
     """Presta y recibe libros, manteniendo coherente el estado del catálogo."""
 
@@ -85,24 +76,24 @@ class LoanService:
         with unit_of_work() as uow:
             loans = uow.loans.get_all()
         today = date.today().isoformat()
-        return [_with_due_info(loan, today) for loan in loans]
+        return [with_due_info(loan, today) for loan in loans]
 
-    def lend_book(
-        self, book_id: int, borrower: str, dni: str, email: str, phone: str
-    ) -> Loan:
-        """Registra el préstamo de un libro y lo marca como no disponible."""
-        loan = _validated_loan(book_id, borrower, dni, email, phone)
+    def lend_book(self, book_id: int, reader_id: int) -> Loan:
+        """Presta un libro a un lector y lo marca como no disponible."""
+        today = date.today().isoformat()
 
-        # Crear el préstamo y marcar el libro son UNA operación: o las dos o
-        # ninguna, para que nunca haya un préstamo de un libro «disponible».
+        # Comprobar al lector, crear el préstamo y marcar el libro son UNA
+        # operación: o todo o nada, para que nunca haya un préstamo de un libro
+        # «disponible» ni dos préstamos a la vez para el mismo lector.
         with unit_of_work() as uow:
+            reader = with_reader_status(uow, require_reader(uow, reader_id), today)
+            ensure_can_borrow(reader)
             book = _require_available_book(uow, book_id)
-            loan.book_title, loan.book_isbn = book.title, book.isbn
-            created = uow.loans.create(loan)
+            created = uow.loans.create(_loan_for(reader, book, today))
             uow.books.set_available(book_id, False)
 
         activity_service.record(activity_service.LOANS)  # STATEFUL
-        return _with_due_info(created, loan.loan_date)
+        return with_due_info(created, today)
 
     def return_book(self, loan_id: int) -> Loan:
         """Cierra un préstamo activo y devuelve el libro al catálogo."""
@@ -115,4 +106,4 @@ class LoanService:
         loan.return_date = today
 
         activity_service.record(activity_service.RETURNS)  # STATEFUL
-        return _with_due_info(loan, today)
+        return with_due_info(loan, today)
