@@ -1,4 +1,4 @@
-"""Las páginas: el inicio de sesión y la vista de cada papel, ya traducidas.
+"""Las páginas ya traducidas: inicio de sesión, la vista de cada papel y países.
 
 Hay una página por papel. El bibliotecario ve el mostrador (préstamos y
 catálogo para gestionar); el lector, el catálogo para consultar, su lista de
@@ -12,6 +12,7 @@ from flask import Blueprint, redirect, render_template, url_for
 from werkzeug.wrappers import Response
 
 from business.auth_service import DEMO_ACCOUNTS
+from business.country_service import REGIONS
 from entities.user import LIBRARIAN
 from presentation.auth import current_user
 from presentation.i18n import current_locale, translate
@@ -40,6 +41,16 @@ def index() -> Union[str, Response]:
     if user is None:
         return redirect(url_for("home.login"))
     return _render(VIEWS.get(user["role"], READER_VIEW), user=user)
+
+
+@home_bp.get("/countries")
+def countries() -> Union[str, Response]:
+    """Países e idiomas: la misma página para los dos papeles."""
+    user = current_user()
+    if user is None:
+        return redirect(url_for("home.login"))
+    # Las regiones son fijas: van ya en la página y no hace falta pedirlas.
+    return _render("countries.html", user=user, regions=REGIONS)
 
 
 @home_bp.get("/login")

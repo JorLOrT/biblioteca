@@ -1,0 +1,6 @@
+# Lo que generan npm y Playwright al instalar y ejecutar las pruebas.
+node_modules/
+test-results/
+playwright-report/
+evidencia/
+.tmp/

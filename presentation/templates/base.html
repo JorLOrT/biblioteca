@@ -25,6 +25,15 @@
         <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
       </select>
       {% if user %}
+        {# Países e idiomas: una consulta al servicio externo countries.dev. #}
+        <a class="btn ghost sm nav-link" href="{{ url_for('home.countries') }}" aria-label="{{ t('nav.countries') }}"
+           {% if request.endpoint == 'home.countries' %}aria-current="page"{% endif %}>
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
+          </svg>
+          <span>{{ t('nav.countries') }}</span>
+        </a>
         {% set role_label = t('role.' ~ user.role) %}
         <div class="user-chip">
           <span class="avatar" aria-hidden="true">{{ user.name[:1] }}</span>

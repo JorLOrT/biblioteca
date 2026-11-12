@@ -36,3 +36,6 @@ stubs/
 *.odt
 docs/
 capturas/
+
+# Pruebas de punta a punta con Playwright: no forman parte de la imagen
+e2e/

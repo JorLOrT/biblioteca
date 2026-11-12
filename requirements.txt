@@ -1,4 +1,6 @@
 Flask==3.0.3
 flask-sock==0.7.0
+# Tokens JWT para los clientes de la API (business/token_service.py).
+PyJWT==2.15.1
 # Servidor de producción (lo usa el Dockerfile). En local basta `python app.py`.
 gunicorn==23.0.0

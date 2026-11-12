@@ -12,22 +12,27 @@ La configuración llega por variables de entorno, nunca escrita en el código:
   FLASK_DEBUG            con "1" activa el modo de depuración. Nunca en producción.
   LIBRARY_DB             otra base de datos (la lee `data_access.database`).
   SESSION_COOKIE_SECURE  con "1", la cookie de sesión solo viaja por HTTPS.
+  JWT_EXPIRES_MINUTES    minutos que vale un token de /api/auth/token (60 por defecto).
 
 En producción (Docker) no se usa `python app.py`: Gunicorn llama a
 `create_app()` con la configuración de `gunicorn.conf.py`.
 """
 
 import os
+from datetime import timedelta
 
 from flask import Flask
 from flask.json.provider import DefaultJSONProvider
 
 from business.auth_service import ensure_demo_accounts
+from business.token_service import TokenService
 from data_access.database import init_db
 from presentation.activity_controller import activity_bp
+from presentation.auth import TOKENS_EXTENSION
 from presentation.auth_controller import auth_bp
 from presentation.book_controller import book_bp
 from presentation.chat_socket import sock
+from presentation.country_controller import country_bp
 from presentation.error_handlers import register_error_handlers
 from presentation.home_controller import home_bp
 from presentation.i18n_controller import i18n_bp
@@ -75,7 +80,8 @@ def create_app() -> Flask:
     )
     app.json = UnicodeJSONProvider(app)
     # Firma la cookie de sesión (cuenta, idioma y lista de deseos).
-    app.secret_key = _secret_key()
+    secret_key = _secret_key()
+    app.secret_key = secret_key
     # Lax: el navegador no manda la cookie en peticiones que lancen otras webs,
     # así que otra página no puede prestar ni borrar nada en nombre de quien
     # tenga la sesión abierta.
@@ -85,14 +91,22 @@ def create_app() -> Flask:
     # se podría iniciar sesión.
     app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE") == "1"
 
+    # Los JWT de los clientes de la API se firman con una clave derivada de la
+    # misma SECRET_KEY, y valen una hora salvo que se diga otra cosa.
+    minutes = int(os.environ.get("JWT_EXPIRES_MINUTES", "60"))
+    app.extensions[TOKENS_EXTENSION] = TokenService(
+        secret_key, lifetime=timedelta(minutes=minutes)
+    )
+
     init_db()
     ensure_demo_accounts()
 
     app.register_blueprint(home_bp)
-    app.register_blueprint(auth_bp)        # iniciar y cerrar sesión
+    app.register_blueprint(auth_bp)        # sesión del navegador y JWT de la API
     app.register_blueprint(book_bp)
     app.register_blueprint(loan_bp)
     app.register_blueprint(reader_bp)      # cuentas y carnets de los lectores
+    app.register_blueprint(country_bp)     # países e idiomas (servicio externo)
     app.register_blueprint(i18n_bp)        # idioma (i18n)
     app.register_blueprint(validation_bp)  # patrones regex para el navegador
     app.register_blueprint(tools_bp)       # endpoints STATELESS
