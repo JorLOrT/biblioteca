@@ -56,6 +56,9 @@ PATTERNS: dict[str, str] = {
 
     # Mensaje del chat: de 1 a 500 caracteres y que no sea solo espacios.
     "message": r"^(?!\s*$)[\s\S]{1,500}$",
+
+    # Código de país ISO 3166-1 alfa-3: tres letras («PER», «GMB»).
+    "country_code": r"^[A-Za-z]{3}$",
 }
 
 # Se compilan una sola vez, al importar el módulo.

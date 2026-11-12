@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ t('countries.heading') }} · {{ t('app.title') }}{% endblock %}
+{% block body_class %}page-countries{% endblock %}
+
+{% block main %}
+<main class="page-narrow">
+  {# Dos desplegables encadenados: al elegir una región se cargan sus países, y
+     al elegir un país, la tabla con sus idiomas. Los datos los pide el
+     navegador a /api/countries, que consulta countries.dev desde el servidor. #}
+  <section class="panel" aria-labelledby="countries-title">
+    <div class="panel-head">
+      <h2 id="countries-title">{{ t('countries.heading') }}</h2>
+      <span class="count" id="countries-count"></span>
+    </div>
+    <div class="panel-body">
+      <p class="muted">{{ t('countries.intro') }}</p>
+      <div class="field-row country-pickers">
+        <div class="field">
+          <label for="region-select">{{ t('countries.region') }}</label>
+          <select id="region-select" autocomplete="off" disabled>
+            <option value="">{{ t('countries.pick_region') }}</option>
+            {% for region in regions %}
+              <option value="{{ region }}">{{ t('region.' ~ region|lower) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="country-select">{{ t('countries.country') }}</label>
+          <select id="country-select" autocomplete="off" disabled>
+            <option value="">{{ t('countries.pick_region_first') }}</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="country-result" id="country-result" aria-live="polite">
+      <p class="empty">{{ t('countries.empty') }}</p>
+    </div>
+  </section>
+  <p class="muted small source-note">{{ t('countries.source') }}</p>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/countries.js') }}"></script>
+{% endblock %}

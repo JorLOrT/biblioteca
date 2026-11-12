@@ -24,15 +24,84 @@ export function tn(key, n, params = {}) {
   return t(chosen, params);
 }
 
+// --- Token JWT ----------------------------------------------------------------
+// Las llamadas a la API se identifican con `Authorization: Bearer <token>`. El
+// token lo entrega el inicio de sesión y se guarda en sessionStorage: dura lo
+// que la pestaña y nunca sale hacia otras webs. Cuando va a vencer, se pide
+// otro a /api/auth/session/token, que lo da a quien tiene la cookie de sesión.
+// Las páginas y el chat siguen con la cookie: el navegador no les añade
+// cabeceras.
+
+const TOKEN_KEY = "biblioteca.token";
+const RENEW_BEFORE_MS = 60_000;  // se renueva si le queda menos de un minuto
+const TOKEN_ERRORS = ["error.token_expired", "error.token_invalid"];
+
+let token = null;           // { value, expires } si no hay sessionStorage
+let renewing = null;        // la renovación en curso, compartida por todos
+
+function readToken() {
+  try {
+    return JSON.parse(sessionStorage.getItem(TOKEN_KEY)) ?? token;
+  } catch {
+    return token;
+  }
+}
+
+/** Guarda el token de una respuesta {access_token, expires_in} del servidor. */
+export function saveToken({ access_token: value, expires_in: seconds }) {
+  token = { value, expires: Date.now() + seconds * 1000 };
+  try {
+    sessionStorage.setItem(TOKEN_KEY, JSON.stringify(token));
+  } catch {
+    // Sin sessionStorage (navegación privada estricta) se queda en memoria.
+  }
+}
+
+export function forgetToken() {
+  token = null;
+  try {
+    sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // Nada que borrar.
+  }
+}
+
+async function renewToken() {
+  const response = await fetch("/api/auth/session/token", { method: "POST" });
+  if (!response.ok) return null;  // sin sesión: la propia llamada dará el 401
+  saveToken(await response.json());
+  return readToken().value;
+}
+
+/** Un token vigente, o null si no hay sesión. Si varias llamadas lo piden a
+ *  la vez mientras se renueva, todas esperan la misma renovación. */
+async function bearerToken() {
+  if (!currentUser()) return null;  // la página de inicio de sesión
+  const saved = readToken();
+  if (saved && saved.expires - Date.now() > RENEW_BEFORE_MS) return saved.value;
+  renewing ??= renewToken().finally(() => { renewing = null; });
+  return renewing;
+}
+
 // --- Llamadas a la API ------------------------------------------------------
 
-/** Llama a la API y convierte el {error} del servidor en una excepción.
- *  Si la sesión terminó, vuelve al inicio de sesión. Si la respuesta ni
- *  siquiera es JSON (un 500 en HTML, por ejemplo) se usa el mensaje genérico. */
-export async function api(url, options) {
-  const response = await fetch(url, options);
+/** Llama a la API con el token y convierte el {error} del servidor en una
+ *  excepción. Si el servidor rechaza el token, pide otro y repite una vez. Si
+ *  la sesión terminó, vuelve al inicio de sesión. Si la respuesta ni siquiera
+ *  es JSON (un 500 en HTML, por ejemplo) se usa el mensaje genérico. */
+export async function api(url, options = {}, retry = true) {
+  const headers = new Headers(options.headers);
+  const bearer = await bearerToken();
+  if (bearer) headers.set("Authorization", `Bearer ${bearer}`);
+
+  const response = await fetch(url, { ...options, headers });
   const data = await response.json().catch(() => ({}));
+  if (retry && TOKEN_ERRORS.includes(data.code)) {
+    forgetToken();
+    return api(url, options, false);
+  }
   if (data.code === "error.login_required") {
+    forgetToken();
     location.href = "/login";
   }
   if (!response.ok) {
@@ -287,6 +356,7 @@ function setupHeader() {
 
   document.getElementById("logout")?.addEventListener("click", async () => {
     await api("/api/auth/logout", { method: "POST" });
+    forgetToken();
     location.href = "/login";
   });
 }

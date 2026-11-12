@@ -1,8 +1,9 @@
 // Inicio de sesión. Si el usuario y la contraseña son correctos, el servidor
-// guarda la cuenta en la sesión y la página de inicio muestra la vista de su
-// papel: el mostrador del bibliotecario o el catálogo del lector.
+// guarda la cuenta en la sesión, entrega el JWT para las llamadas a la API y la
+// página de inicio muestra la vista de su papel: el mostrador del bibliotecario
+// o el catálogo del lector.
 
-import { sendJson, start, t } from "./core.js";
+import { saveToken, sendJson, start, t } from "./core.js";
 
 const form = document.getElementById("login-form");
 const username = document.getElementById("login-username");
@@ -22,10 +23,10 @@ async function logIn() {
     return;
   }
   try {
-    await sendJson("POST", "/api/auth/login", {
+    saveToken(await sendJson("POST", "/api/auth/login", {
       username: username.value,
       password: password.value,
-    });
+    }));
     location.href = "/";
   } catch (error) {
     // El servidor da el mismo mensaje para un usuario que no existe y para

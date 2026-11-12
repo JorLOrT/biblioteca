@@ -28,3 +28,7 @@ class AuthError(BusinessError):
 
 class ForbiddenError(BusinessError):
     """La cuenta no tiene permiso para esta operación (la presentación responde 403)."""
+
+
+class ServiceUnavailableError(BusinessError):
+    """Un servicio externo del que depende la operación no responde (503)."""
