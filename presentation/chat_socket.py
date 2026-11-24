@@ -160,20 +160,7 @@ def notify_data_changed() -> None:
     _send_each(lambda client: {"type": "refresh"})
 
 
-# --- Un manejador por cada tipo de mensaje que manda el navegador ----------
-
-def _message(connection: _Connection, data: dict[str, object]) -> None:
-    # `to` solo lo usa el bibliotecario: el lector escribe siempre en la suya.
-    message = chat_service.publish(
-        connection.identity, text_field(data, "text"), text_field(data, "to")
-    )
-    _deliver(message)
-
-
-_HANDLERS: dict[str, Callable[[_Connection, dict[str, object]], None]] = {
-    "message": _message,
-}
-
+# --- Una conexión: al entrar, con cada mensaje y al salir ----------------------
 
 def _on_connect(connection: _Connection) -> None:
     with _lock:
@@ -195,17 +182,21 @@ def _on_message(connection: _Connection, raw: Union[str, bytes]) -> None:
         data = json_object(json.loads(raw))
     except ValueError:
         return
-
-    handler = _HANDLERS.get(text_field(data, "type"))
-    if handler is None:
+    # El navegador solo manda un tipo de mensaje: el texto que se escribe.
+    if text_field(data, "type") != "message":
         return
 
     try:
-        handler(connection, data)
+        # `to` solo lo usa el bibliotecario: el lector escribe siempre en la suya.
+        message = chat_service.publish(
+            connection.identity, text_field(data, "text"), text_field(data, "to")
+        )
     except BusinessError as error:
         # El negocio lanza una clave; aquí se traduce, igual que en los
         # endpoints HTTP y con el mismo formato.
         connection.send({"type": "error", **error_payload(error, connection.lang)})
+        return
+    _deliver(message)
 
 
 def _on_disconnect(connection: _Connection) -> None:

@@ -1,6 +1,7 @@
-// Lo que comparten todas las páginas: traducciones, llamadas a la API, avisos,
-// fechas, validación con regex, portadas y diálogos. Solo habla HTTP con la
-// capa de presentación: no conoce las reglas de negocio ni la base de datos.
+// Lo que comparten todas las páginas: traducciones, el token JWT, llamadas a la
+// API, avisos, fechas, validación con regex, el catálogo, portadas y diálogos.
+// Solo habla HTTP con la capa de presentación: no conoce las reglas de negocio
+// ni la base de datos.
 
 let messages = {};  // catálogo de traducciones que entrega /api/i18n
 let rules = {};     // expresiones regulares que entrega /api/validation-rules
@@ -264,6 +265,27 @@ export function resetForm(form) {
     field.classList.remove("has-error");
     field.querySelector(".field-error").hidden = true;
   });
+}
+
+// --- Catálogo: búsqueda y filtro ----------------------------------------------
+// Las dos vistas tienen el mismo buscador (`_search.html`) y la misma casilla
+// «Solo disponibles». Los dos los aplica el servidor.
+
+/** La dirección del catálogo con lo que se busca y el filtro. */
+export function booksUrl(search, onlyAvailable) {
+  const params = new URLSearchParams();
+  const query = search.value.trim();
+  if (query) params.set("q", query);
+  if (onlyAvailable.checked) params.set("available", "true");
+  return "/api/books?" + params;
+}
+
+/** Qué decir cuando el catálogo sale vacío: sin resultados, nada disponible o
+ *  ningún libro. */
+export function emptyCatalogText(search, onlyAvailable) {
+  const query = search.value.trim();
+  if (query) return t("catalog.no_results", { query: escapeHtml(query) });
+  return t(onlyAvailable.checked ? "catalog.empty_available" : "catalog.empty");
 }
 
 // --- Portadas de Open Library -----------------------------------------------

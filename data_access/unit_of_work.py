@@ -5,7 +5,7 @@ como no disponible. Si la segunda fallara después de hacer la primera, la base
 de datos quedaría con un préstamo activo de un libro que figura disponible.
 
 La unidad de trabajo abre una conexión, empieza una transacción y entrega los
-dos repositorios trabajando sobre ella:
+repositorios trabajando sobre ella:
 
     with unit_of_work() as uow:
         uow.loans.create(loan)

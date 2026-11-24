@@ -16,11 +16,10 @@ import { URL_APP } from "../entorno.js";
 
 const CARPETA_EVIDENCIA = join(dirname(fileURLToPath(import.meta.url)), "..", "evidencia", "pruebas");
 
-// Las cuentas de prueba que crea la aplicación al arrancar.
+// Las cuentas de prueba que usan las pruebas. Las crea la aplicación al arrancar.
 const CUENTAS = {
   jorge: "jorge123",
   pepito: "pepito123",
-  juanita: "juanita123",
 };
 
 export const test = base.extend({

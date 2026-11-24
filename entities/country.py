@@ -28,7 +28,7 @@ class Country:
     name: str                   # en inglés: «Peru»
     region: Optional[str] = None
     native_name: Optional[str] = None  # en su propio idioma: «Perú»
-    flag: Optional[str] = None         # emoji: «🇵🇪»
+    flag: Optional[str] = None         # la bandera, un carácter Unicode del servicio
     # El nombre del país en otros idiomas, por código: {"es": "Perú", ...}.
     translations: dict[str, str] = field(default_factory=dict)
     languages: list[Language] = field(default_factory=list)

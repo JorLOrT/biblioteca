@@ -6,8 +6,8 @@
 // su lista y se lo pide al bibliotecario por su chat privado, siempre al lado.
 
 import {
-  api, avatarColor, coverHtml, daysUntil, escapeHtml, formatDate, money, notify, runAction,
-  start, t, tn, todayIso,
+  api, avatarColor, booksUrl, coverHtml, daysUntil, emptyCatalogText, escapeHtml, formatDate,
+  money, notify, runAction, start, t, tn, todayIso,
 } from "./core.js";
 import { prefillChat, startChat } from "./chat.js";
 
@@ -106,16 +106,10 @@ function bookCard(book) {
     </li>`;
 }
 
-function emptyCatalogText() {
-  const query = search.value.trim();
-  if (query) return t("catalog.no_results", { query: escapeHtml(query) });
-  return t(onlyAvailable.checked ? "catalog.empty_available" : "catalog.empty");
-}
-
 function renderCatalog() {
   document.getElementById("book-grid").innerHTML = books.length
     ? books.map(bookCard).join("")
-    : `<li class="empty">${emptyCatalogText()}</li>`;
+    : `<li class="empty">${emptyCatalogText(search, onlyAvailable)}</li>`;
   document.getElementById("books-count").textContent = books.length;
 }
 
@@ -147,18 +141,9 @@ function renderWishlist() {
 
 // --- Recarga -------------------------------------------------------------------------
 
-/** El catálogo con la búsqueda y el filtro: los aplica el servidor. */
-function booksUrl() {
-  const params = new URLSearchParams();
-  const query = search.value.trim();
-  if (query) params.set("q", query);
-  if (onlyAvailable.checked) params.set("available", "true");
-  return "/api/books?" + params;
-}
-
 async function reload() {
   const [bookList, saved, account] = await Promise.all([
-    api(booksUrl()),
+    api(booksUrl(search, onlyAvailable)),
     api("/api/wishlist"),
     api("/api/readers/me"),
   ]);
@@ -171,7 +156,7 @@ async function reload() {
 }
 
 async function reloadBooks() {
-  books = await api(booksUrl());
+  books = await api(booksUrl(search, onlyAvailable));
   renderCatalog();
 }
 

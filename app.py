@@ -7,12 +7,14 @@ una petición siempre baja en el mismo orden:
     Navegador -> Presentación -> Negocio -> Acceso a Datos -> SQLite
 
 La configuración llega por variables de entorno, nunca escrita en el código:
-  SECRET_KEY             obligatoria: firma la cookie de sesión.
+  SECRET_KEY             obligatoria: firma la cookie de sesión y, derivada, los JWT.
   HOST, PORT             dónde escucha el servidor (127.0.0.1:5001 por defecto).
   FLASK_DEBUG            con "1" activa el modo de depuración. Nunca en producción.
   LIBRARY_DB             otra base de datos (la lee `data_access.database`).
   SESSION_COOKIE_SECURE  con "1", la cookie de sesión solo viaja por HTTPS.
-  JWT_EXPIRES_MINUTES    minutos que vale un token de /api/auth/token (60 por defecto).
+  JWT_EXPIRES_MINUTES    minutos que vale un token JWT (60 por defecto).
+  COUNTRIES_API_URL      otra dirección del servicio de países (la lee
+                         `data_access.country_gateway`).
 
 En producción (Docker) no se usa `python app.py`: Gunicorn llama a
 `create_app()` con la configuración de `gunicorn.conf.py`.
@@ -91,8 +93,8 @@ def create_app() -> Flask:
     # se podría iniciar sesión.
     app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE") == "1"
 
-    # Los JWT de los clientes de la API se firman con una clave derivada de la
-    # misma SECRET_KEY, y valen una hora salvo que se diga otra cosa.
+    # Los JWT se firman con una clave derivada de la misma SECRET_KEY y valen
+    # una hora, salvo que JWT_EXPIRES_MINUTES diga otra cosa.
     minutes = int(os.environ.get("JWT_EXPIRES_MINUTES", "60"))
     app.extensions[TOKENS_EXTENSION] = TokenService(
         secret_key, lifetime=timedelta(minutes=minutes)

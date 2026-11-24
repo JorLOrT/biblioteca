@@ -19,9 +19,6 @@ from presentation.i18n import current_locale, translate
 
 home_bp = Blueprint("home", __name__)
 
-VIEWS = {LIBRARIAN: "librarian.html"}
-READER_VIEW = "reader.html"
-
 
 def _render(template: str, **context: object) -> str:
     lang = current_locale()
@@ -40,7 +37,8 @@ def index() -> Union[str, Response]:
     user = current_user()
     if user is None:
         return redirect(url_for("home.login"))
-    return _render(VIEWS.get(user["role"], READER_VIEW), user=user)
+    page = "librarian.html" if user["role"] == LIBRARIAN else "reader.html"
+    return _render(page, user=user)
 
 
 @home_bp.get("/countries")
