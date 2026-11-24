@@ -1,4 +1,4 @@
-# 📚 Biblioteca — Aplicación web con Arquitectura N-Capas
+# Biblioteca: aplicación web con arquitectura N-Capas
 
 Catálogo de libros con préstamos y devoluciones, construido con **Python + Flask + SQLite**
 para practicar la arquitectura en capas. Tiene dos vistas: la del **bibliotecario**, que presta,

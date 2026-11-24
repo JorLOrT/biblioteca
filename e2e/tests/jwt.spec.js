@@ -1,8 +1,9 @@
 // Autenticación con JWT: el servicio de login y el token Bearer.
 //
-// Estas pruebas no abren el navegador: llaman a la API como lo haría otro
+// Las primeras ocho no abren el navegador: llaman a la API como lo haría otro
 // programa, con el `request` de Playwright. No llevan cookies, así que la única
-// forma de identificarse es el token.
+// forma de identificarse es el token. Las dos últimas usan Chrome y comprueban
+// que la página envía el token y lo renueva.
 
 import { createHmac } from "node:crypto";
 

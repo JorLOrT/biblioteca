@@ -1,8 +1,9 @@
-"""Tokens JWT: la credencial de quien usa los servicios sin navegador.
+"""Tokens JWT: la credencial con la que se llama a los servicios.
 
-El navegador entra con la cookie de sesión. Un cliente de la API (otro
-programa, Postman, curl) pide un token a `POST /api/auth/token` y lo envía en
-cada petición como `Authorization: Bearer <token>`.
+El inicio de sesión entrega un token, y quien llama a la API lo envía en cada
+petición como `Authorization: Bearer <token>`. Lo usan la página web, que lo
+recibe al entrar, y cualquier otro programa, como curl o Postman, que lo pide a
+`POST /api/auth/token`.
 
 El token es un JWT firmado con HMAC-SHA256 (HS256). Lleva quién es la cuenta,
 su papel y hasta cuándo vale. El servidor no guarda nada: le basta comprobar la

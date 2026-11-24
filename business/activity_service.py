@@ -6,7 +6,7 @@ le pasen, sino de todo lo que ha ocurrido antes en este proceso.
 
 Es el contraste exacto con `library_calculator`:
   - `calculate_due_date("2026-03-01")` devuelve siempre lo mismo.
-  - `record(LOANS)`                    devuelve 1, luego 2, luego 3...
+  - Después de cada `record(LOANS)`, `summary()` cuenta 1, luego 2, luego 3...
 
 Al reiniciar el servidor los contadores vuelven a cero, porque no están en la
 base de datos sino en la RAM del proceso. El `Lock` evita que dos peticiones
@@ -29,7 +29,6 @@ RETURNS = "returns"
 
 class ActivitySummary(TypedDict):
     counters: dict[str, int]
-    total: int
     last_action: Optional[str]
     last_action_at: Optional[str]
 
@@ -47,17 +46,16 @@ _lock = threading.Lock()
 _state = _ActivityState()
 
 
-def record(action: str) -> int:
-    """STATEFUL 1 — Anota que ha ocurrido `action` y devuelve el total acumulado.
+def record(action: str) -> None:
+    """STATEFUL 1 — Anota que ha ocurrido `action`.
 
-    Cada llamada modifica el estado del servidor: la misma entrada produce una
-    salida distinta cada vez.
+    Cada llamada modifica el estado del servidor: después de la misma llamada,
+    `summary()` ya no devuelve lo mismo que antes.
     """
     with _lock:
         _state.counters[action] = _state.counters.get(action, 0) + 1
         _state.last_action = action
         _state.last_action_at = datetime.now().strftime("%H:%M:%S")
-        return _state.counters[action]
 
 
 def summary() -> ActivitySummary:
@@ -65,7 +63,6 @@ def summary() -> ActivitySummary:
     with _lock:
         return {
             "counters": dict(_state.counters),
-            "total": sum(_state.counters.values()),
             "last_action": _state.last_action,
             "last_action_at": _state.last_action_at,
         }

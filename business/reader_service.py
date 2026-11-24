@@ -84,11 +84,6 @@ class ReaderService:
                 for reader in uow.users.get_by_role(READER)
             ]
 
-    def get_reader(self, reader_id: int) -> User:
-        with unit_of_work() as uow:
-            reader = require_reader(uow, reader_id)
-            return with_reader_status(uow, reader, date.today().isoformat())
-
     def create_reader(self, username: str, form: ReaderForm) -> User:
         """Crea la cuenta y le da un carnet: BIB- y el número de la cuenta."""
         password = validate_field("password", form["password"])

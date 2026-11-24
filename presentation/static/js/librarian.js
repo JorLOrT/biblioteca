@@ -7,9 +7,9 @@
 // bibliotecario de donde está.
 
 import {
-  api, avatarColor, confirmAction, coverHtml, daysUntil, enableLiveValidation, escapeHtml,
-  fieldIsValid, formatDate, formIsValid, markField, money, notify, resetForm, runAction,
-  runInDialog, sendJson, start, t, tn, todayIso,
+  api, avatarColor, booksUrl, confirmAction, coverHtml, daysUntil, emptyCatalogText,
+  enableLiveValidation, escapeHtml, fieldIsValid, formatDate, formIsValid, markField, money,
+  notify, resetForm, runAction, runInDialog, sendJson, start, t, tn, todayIso,
 } from "./core.js";
 import { openConversation, setReaders, startChat } from "./chat.js";
 
@@ -187,27 +187,12 @@ function bookRow(book) {
     </li>`;
 }
 
-function emptyCatalogText() {
-  const query = search.value.trim();
-  if (query) return t("catalog.no_results", { query: escapeHtml(query) });
-  return t(onlyAvailable.checked ? "catalog.empty_available" : "catalog.empty");
-}
-
 function renderBooks(list) {
   books = list;
   document.getElementById("book-list").innerHTML = list.length
     ? list.map(bookRow).join("")
-    : `<li class="empty">${emptyCatalogText()}</li>`;
+    : `<li class="empty">${emptyCatalogText(search, onlyAvailable)}</li>`;
   document.getElementById("books-count").textContent = list.length;
-}
-
-/** El catálogo con la búsqueda y el filtro: los aplica el servidor. */
-function booksUrl() {
-  const params = new URLSearchParams();
-  const query = search.value.trim();
-  if (query) params.set("q", query);
-  if (onlyAvailable.checked) params.set("available", "true");
-  return "/api/books?" + params;
 }
 
 // --- Lectores -------------------------------------------------------------------
@@ -279,7 +264,7 @@ function renderReaders(list) {
 
 async function reload() {
   const [bookList, loanList, activity, readerList] = await Promise.all([
-    api(booksUrl()),
+    api(booksUrl(search, onlyAvailable)),
     api("/api/loans"),
     api("/api/activity"),
     api("/api/readers"),
@@ -299,13 +284,17 @@ function reloadSoon() {
   reloadTimer = setTimeout(() => runAction(reload), 250);
 }
 
-onlyAvailable.addEventListener("change", () => runAction(async () => renderBooks(await api(booksUrl()))));
+async function reloadBooks() {
+  renderBooks(await api(booksUrl(search, onlyAvailable)));
+}
+
+onlyAvailable.addEventListener("change", () => runAction(reloadBooks));
 
 // Se busca mientras se escribe, pero se espera a que se deje de teclear.
 let searchTimer = null;
 search.addEventListener("input", () => {
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => runAction(async () => renderBooks(await api(booksUrl()))), 250);
+  searchTimer = setTimeout(() => runAction(reloadBooks), 250);
 });
 
 // --- Recibir un libro ---------------------------------------------------------

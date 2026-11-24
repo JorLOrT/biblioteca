@@ -20,7 +20,7 @@ from business.token_service import TokenClaims
 from entities.user import User
 from presentation.auth import (
     SESSION_KEY,
-    SessionUser,
+    CurrentUser,
     auth_method,
     current_user,
     log_in,
@@ -41,7 +41,7 @@ def _authenticate() -> User:
     )
 
 
-def _token_response(user: SessionUser) -> Response:
+def _token_response(user: CurrentUser) -> Response:
     """Un JWT para la cuenta, con la forma del endpoint de tokens de OAuth 2.0."""
     issued = token_service().issue(
         TokenClaims(username=user["username"], name=user["name"], role=user["role"])
@@ -75,7 +75,7 @@ def token() -> Response:
     """POST /api/auth/token {username, password} — el servicio de login con JWT."""
     user = _authenticate()
     return _token_response(
-        SessionUser(username=user.username, name=user.display_name, role=user.role)
+        CurrentUser(username=user.username, name=user.display_name, role=user.role)
     )
 
 
@@ -87,7 +87,7 @@ def session_token() -> Response:
     vida de uno robado. Otra web no puede pedirlo en nombre del usuario, porque
     la cookie es SameSite=Lax y no viaja en un POST que venga de fuera.
     """
-    user: Optional[SessionUser] = session.get(SESSION_KEY)
+    user: Optional[CurrentUser] = session.get(SESSION_KEY)
     if user is None:
         raise AuthError("error.login_required")
     return _token_response(user)

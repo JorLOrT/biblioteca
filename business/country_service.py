@@ -10,6 +10,8 @@ negocio decide qué se le puede pedir y qué hacer cuando algo falla:
 """
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Optional
 
 from business.exceptions import BusinessError, NotFoundError, ServiceUnavailableError
@@ -21,6 +23,17 @@ from entities.country import Country
 REGIONS = ("Africa", "Americas", "Asia", "Europe", "Oceania", "Polar")
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _service_errors() -> Iterator[None]:
+    """Si la pasarela falla, el usuario recibe un aviso traducido y el registro
+    del servidor guarda la causa real."""
+    try:
+        yield
+    except CountriesUnavailableError as error:
+        logger.warning("Servicio de países sin respuesta: %s", error)
+        raise ServiceUnavailableError("error.countries_unavailable") from None
 
 
 class CountryService:
@@ -37,21 +50,14 @@ class CountryService:
         canonical = next((r for r in REGIONS if r.lower() == wanted), None)
         if canonical is None:
             raise BusinessError("error.invalid_region")
-        try:
+        with _service_errors():
             return self._gateway.get_by_region(canonical)
-        except CountriesUnavailableError as error:
-            # Al usuario, un aviso traducido; en el registro, la causa real.
-            logger.warning("Servicio de países sin respuesta: %s", error)
-            raise ServiceUnavailableError("error.countries_unavailable") from None
 
     def get_country(self, code: str) -> Country:
         """Un país con sus idiomas, por su código de tres letras («PER»)."""
         clean_code = validate_field("country_code", code).upper()
-        try:
+        with _service_errors():
             country = self._gateway.get_by_code(clean_code)
-        except CountriesUnavailableError as error:
-            logger.warning("Servicio de países sin respuesta: %s", error)
-            raise ServiceUnavailableError("error.countries_unavailable") from None
         if country is None:
             raise NotFoundError("error.country_not_found", code=clean_code)
         return country
